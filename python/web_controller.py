@@ -57,13 +57,11 @@ command_log: list[dict] = []
 LOG_MAX = 50
 
 # Inverse kinematics (all dimensions in mm)
-# Fd = 36.7 mm → F = 6·Fd/√3 ≈ 127.1 mm
-# Ed = 80.0 mm → E = 6·Ed/√3 ≈ 277.1 mm
 ik_config = {
     "upper_arm": 150.0,
     "lower_arm": 271.0,
-    "base": 6 * 36.7 / (3 ** 0.5),      # ≈ 127.1 mm
-    "effector": 6 * 80.0 / (3 ** 0.5),   # ≈ 277.1 mm
+    "Fd": 36.7,
+    "Ed": 80.0,
 }
 dk = DeltaKinematics(**ik_config)
 
@@ -458,7 +456,7 @@ def api_ik_config():
     global dk
     if request.method == "POST":
         data = request.json or {}
-        for key in ("upper_arm", "lower_arm", "base", "effector"):
+        for key in ("upper_arm", "lower_arm", "Fd", "Ed"):
             if key in data:
                 ik_config[key] = float(data[key])
         dk = DeltaKinematics(**ik_config)

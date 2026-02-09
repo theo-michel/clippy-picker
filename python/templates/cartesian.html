@@ -473,27 +473,27 @@ body {
       <div class="xyz-group">
         <div class="xyz-row">
           <span class="xyz-label lx">X</span>
-          <input type="range" class="xyz-slider sx" id="sliderX" min="-4" max="4" step="0.05" value="0"
+          <input type="range" class="xyz-slider sx" id="sliderX" min="-150" max="150" step="1" value="0"
                  oninput="onSlider('x', this.value)">
-          <input type="number" class="xyz-input" id="inputX" value="0" step="0.1"
+          <input type="number" class="xyz-input" id="inputX" value="0" step="1"
                  onchange="onInput('x', this.value)">
-          <span class="xyz-unit">cm</span>
+          <span class="xyz-unit">mm</span>
         </div>
         <div class="xyz-row">
           <span class="xyz-label ly">Y</span>
-          <input type="range" class="xyz-slider sy" id="sliderY" min="-4" max="4" step="0.05" value="0"
+          <input type="range" class="xyz-slider sy" id="sliderY" min="-150" max="150" step="1" value="0"
                  oninput="onSlider('y', this.value)">
-          <input type="number" class="xyz-input" id="inputY" value="0" step="0.1"
+          <input type="number" class="xyz-input" id="inputY" value="0" step="1"
                  onchange="onInput('y', this.value)">
-          <span class="xyz-unit">cm</span>
+          <span class="xyz-unit">mm</span>
         </div>
         <div class="xyz-row">
           <span class="xyz-label lz">Z</span>
-          <input type="range" class="xyz-slider sz" id="sliderZ" min="-8" max="0" step="0.05" value="-5"
+          <input type="range" class="xyz-slider sz" id="sliderZ" min="-400" max="-100" step="1" value="-250"
                  oninput="onSlider('z', this.value)">
-          <input type="number" class="xyz-input" id="inputZ" value="-5" step="0.1"
+          <input type="number" class="xyz-input" id="inputZ" value="-250" step="1"
                  onchange="onInput('z', this.value)">
-          <span class="xyz-unit">cm</span>
+          <span class="xyz-unit">mm</span>
         </div>
       </div>
       <div class="actions-row">
@@ -537,19 +537,23 @@ body {
       <div class="geo-group">
         <div class="geo-row">
           <span class="geo-label">Upper arm (L)</span>
-          <input type="number" class="geo-input" id="geoL" value="2.5" step="0.1">
+          <input type="number" class="geo-input" id="geoL" value="150" step="1">
+          <span class="xyz-unit">mm</span>
         </div>
         <div class="geo-row">
           <span class="geo-label">Lower arm (l)</span>
-          <input type="number" class="geo-input" id="geol" value="6" step="0.1">
+          <input type="number" class="geo-input" id="geol" value="271" step="1">
+          <span class="xyz-unit">mm</span>
         </div>
         <div class="geo-row">
-          <span class="geo-label">Base (F)</span>
-          <input type="number" class="geo-input" id="geoF" value="4.5" step="0.1">
+          <span class="geo-label">Base offset (Fd)</span>
+          <input type="number" class="geo-input" id="geoFd" value="36.7" step="0.1">
+          <span class="xyz-unit">mm</span>
         </div>
         <div class="geo-row">
-          <span class="geo-label">Effector (E)</span>
-          <input type="number" class="geo-input" id="geoE" value="1.5" step="0.1">
+          <span class="geo-label">Effector offset (Ed)</span>
+          <input type="number" class="geo-input" id="geoEd" value="80" step="0.1">
+          <span class="xyz-unit">mm</span>
         </div>
       </div>
       <div class="actions-row">
@@ -566,21 +570,24 @@ body {
 // ================================================================== //
 //  State                                                              //
 // ================================================================== //
-const pos = { x: 0, y: 0, z: -5 };
+const pos = { x: 0, y: 0, z: -250 };
 let angles = [null, null, null];
 let reachable = true;
 let sendTimer = null;
 const SEND_INTERVAL = 60; // ms between server calls during drag
 
-// Geometry (mirrors server; used for client-side IK preview)
-let geo = { L: 2.5, l: 6.0, F: 4.5, E: 1.5 };
+// Geometry in mm (mirrors server; used for client-side IK preview)
+let geo = { L: 150, l: 271, Fd: 36.7, Ed: 80 };
 
-// Workspace bounds
+// Workspace bounds (mm)
 const BOUNDS = {
-  x: [-4, 4],
-  y: [-4, 4],
-  z: [-8, 0],
+  x: [-150, 150],
+  y: [-150, 150],
+  z: [-400, -100],
 };
+
+// Grid step (mm) — one line per this many mm
+const GRID_STEP = 50;
 
 // ================================================================== //
 //  Client-side Inverse Kinematics (triangles method)                  //
@@ -606,8 +613,8 @@ function solveArm(L, l, Fd, Ed, x, y, z) {
 }
 
 function computeIK(x, y, z) {
-  const Fd = SQRT3 * geo.F / 6;
-  const Ed = SQRT3 * geo.E / 6;
+  const Fd = geo.Fd;
+  const Ed = geo.Ed;
   const t1 = solveArm(geo.L, geo.l, Fd, Ed, x, y, z);
 
   const cos120 = -0.5, sin120 = SQRT3 / 2;
@@ -729,7 +736,7 @@ function applyPointer(e, pane) {
   scheduleSend(false);
 }
 
-function round2(v) { return Math.round(v * 20) / 20; } // 0.05 step
+function round2(v) { return Math.round(v); } // 1 mm step
 
 // ================================================================== //
 //  Rendering                                                          //
@@ -755,33 +762,32 @@ function renderPane(pane) {
   const dh = h - 2 * m;
 
   // Grid lines
+  const step = GRID_STEP;
   ctx.lineWidth = 1;
-  for (let v = Math.ceil(hRange[0]); v <= hRange[1]; v++) {
+  for (let v = Math.ceil(hRange[0] / step) * step; v <= hRange[1]; v += step) {
     const cx = m + (v - hRange[0]) / (hRange[1] - hRange[0]) * dw;
-    ctx.strokeStyle = (v === 0) ? AXIS_COLORS[hAxis] : (v % 2 === 0 ? GRID_COLOR_MAJ : GRID_COLOR);
-    ctx.globalAlpha = (v === 0) ? 0.7 : 1;
+    const isOrigin = Math.abs(v) < 0.5;
+    ctx.strokeStyle = isOrigin ? AXIS_COLORS[hAxis] : (v % (step * 2) === 0 ? GRID_COLOR_MAJ : GRID_COLOR);
+    ctx.globalAlpha = isOrigin ? 0.7 : 1;
     ctx.beginPath(); ctx.moveTo(cx, m); ctx.lineTo(cx, m + dh); ctx.stroke();
     ctx.globalAlpha = 1;
     // Tick label
-    if (v % 2 === 0) {
-      ctx.fillStyle = 'rgba(139,143,163,.6)';
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(v, cx, h - m / 4 + 2);
-    }
+    ctx.fillStyle = 'rgba(139,143,163,.6)';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(v, cx, h - m / 4 + 2);
   }
-  for (let v = Math.ceil(vRange[0]); v <= vRange[1]; v++) {
+  for (let v = Math.ceil(vRange[0] / step) * step; v <= vRange[1]; v += step) {
     const cy = m + (vRange[1] - v) / (vRange[1] - vRange[0]) * dh;
-    ctx.strokeStyle = (v === 0) ? AXIS_COLORS[vAxis] : (v % 2 === 0 ? GRID_COLOR_MAJ : GRID_COLOR);
-    ctx.globalAlpha = (v === 0) ? 0.7 : 1;
+    const isOrigin = Math.abs(v) < 0.5;
+    ctx.strokeStyle = isOrigin ? AXIS_COLORS[vAxis] : (v % (step * 2) === 0 ? GRID_COLOR_MAJ : GRID_COLOR);
+    ctx.globalAlpha = isOrigin ? 0.7 : 1;
     ctx.beginPath(); ctx.moveTo(m, cy); ctx.lineTo(m + dw, cy); ctx.stroke();
     ctx.globalAlpha = 1;
-    if (v % 2 === 0) {
-      ctx.fillStyle = 'rgba(139,143,163,.6)';
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(v, m - 6, cy + 3);
-    }
+    ctx.fillStyle = 'rgba(139,143,163,.6)';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(v, m - 6, cy + 3);
   }
 
   // Axis labels
@@ -833,8 +839,8 @@ function renderPane(pane) {
   ctx.fill();
 
   // Coordinate tooltip near dot
-  const hVal = pos[hAxis].toFixed(1);
-  const vVal = pos[vAxis].toFixed(1);
+  const hVal = Math.round(pos[hAxis]);
+  const vVal = Math.round(pos[vAxis]);
   pane.coordsEl.innerHTML =
     `<span style="color:${AXIS_COLORS[hAxis]}">${hAxis.toUpperCase()}=${hVal}</span>&ensp;` +
     `<span style="color:${AXIS_COLORS[vAxis]}">${vAxis.toUpperCase()}=${vVal}</span>`;
@@ -966,13 +972,13 @@ function sendPosition() {
 }
 
 async function sendHome() {
-  pos.x = 0; pos.y = 0; pos.z = -5;
+  pos.x = 0; pos.y = 0; pos.z = -250;
   syncUI(); updateIK(); renderAll();
   try {
     await fetch('/api/move_xyz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 0, y: 0, z: -5 }),
+      body: JSON.stringify({ x: 0, y: 0, z: -250 }),
     });
   } catch (e) { console.error(e); }
 }
@@ -992,12 +998,12 @@ async function loadGeometry() {
     const data = await res.json();
     geo.L = data.upper_arm;
     geo.l = data.lower_arm;
-    geo.F = data.base;
-    geo.E = data.effector;
-    document.getElementById('geoL').value = geo.L;
-    document.getElementById('geol').value = geo.l;
-    document.getElementById('geoF').value = geo.F;
-    document.getElementById('geoE').value = geo.E;
+    geo.Fd = data.Fd;
+    geo.Ed = data.Ed;
+    document.getElementById('geoL').value = Math.round(geo.L * 10) / 10;
+    document.getElementById('geol').value = Math.round(geo.l * 10) / 10;
+    document.getElementById('geoFd').value = Math.round(geo.Fd * 10) / 10;
+    document.getElementById('geoEd').value = Math.round(geo.Ed * 10) / 10;
     updateIK();
     renderAll();
   } catch (e) { console.error(e); }
@@ -1006,15 +1012,15 @@ async function loadGeometry() {
 async function saveGeometry() {
   geo.L = parseFloat(document.getElementById('geoL').value) || geo.L;
   geo.l = parseFloat(document.getElementById('geol').value) || geo.l;
-  geo.F = parseFloat(document.getElementById('geoF').value) || geo.F;
-  geo.E = parseFloat(document.getElementById('geoE').value) || geo.E;
+  geo.Fd = parseFloat(document.getElementById('geoFd').value) || geo.Fd;
+  geo.Ed = parseFloat(document.getElementById('geoEd').value) || geo.Ed;
   try {
     await fetch('/api/ik_config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         upper_arm: geo.L, lower_arm: geo.l,
-        base: geo.F, effector: geo.E,
+        Fd: geo.Fd, Ed: geo.Ed,
       }),
     });
   } catch (e) { console.error(e); }

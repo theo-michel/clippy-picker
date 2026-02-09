@@ -13,17 +13,17 @@ Reference frame:
   - Origin at the centre of the base platform.
   - Z axis points downward (end-effector workspace is at negative z).
 
-Robot geometry parameters:
-  L  — upper arm length  (shoulder → elbow)
-  l  — lower arm length  (elbow   → end-effector joint)
-  F  — base platform equilateral-triangle side
-  E  — end-effector equilateral-triangle side
+Robot geometry parameters (all in the same unit, e.g. mm):
+  upper_arm — shoulder-to-elbow length  (L)
+  lower_arm — elbow-to-effector-joint length  (l)
+  Fd        — base joint offset from centre
+  Ed        — effector joint offset from centre
 
 Usage:
     from delta_kinematics import DeltaKinematics
 
-    dk = DeltaKinematics(upper_arm=2.5, lower_arm=6.0, base=4.5, effector=1.5)
-    angles = dk.inverse(x=0, y=0, z=-5.0)
+    dk = DeltaKinematics(upper_arm=150, lower_arm=271, Fd=36.7, Ed=80)
+    angles = dk.inverse(x=0, y=0, z=-250)
     print(angles)  # (θ1, θ2, θ3) in degrees
 """
 
@@ -31,22 +31,20 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Tuple
 
 
 @dataclass
 class DeltaKinematics:
     """Inverse kinematics solver for a symmetric delta robot."""
 
-    upper_arm: float   # L — shoulder-to-elbow
-    lower_arm: float   # l — elbow-to-effector-joint
-    base: float        # F — base triangle side
-    effector: float    # E — effector triangle side
+    upper_arm: float   # L  — shoulder-to-elbow
+    lower_arm: float   # l  — elbow-to-effector-joint
+    Fd: float          # base joint offset from centre
+    Ed: float          # effector joint offset from centre
 
     def __post_init__(self) -> None:
         self._sqrt3 = math.sqrt(3.0)
-        self._base_offset = self._sqrt3 * self.base / 6.0       # Fd
-        self._effector_offset = self._sqrt3 * self.effector / 6.0  # Ed
 
     # ------------------------------------------------------------------ #
     #  Public API
@@ -106,8 +104,8 @@ class DeltaKinematics:
         """
         L = self.upper_arm
         l = self.lower_arm
-        Fd = self._base_offset
-        Ed = self._effector_offset
+        Fd = self.Fd
+        Ed = self.Ed
 
         y_hat = y - Ed
 
@@ -150,8 +148,8 @@ class DeltaKinematics:
         """
         L = self.upper_arm
         l = self.lower_arm
-        Fd = self._base_offset
-        Ed = self._effector_offset
+        Fd = self.Fd
+        Ed = self.Ed
 
         # Left triangle → α
         d = y - Ed + Fd
@@ -208,13 +206,13 @@ class DeltaKinematics:
 # ====================================================================== #
 
 if __name__ == "__main__":
-    dk = DeltaKinematics(upper_arm=2.5, lower_arm=6.0, base=4.5, effector=1.5)
+    dk = DeltaKinematics(upper_arm=150, lower_arm=271, Fd=36.7, Ed=80)
 
     test_points = [
-        (0.0, 0.0, -5.0),
-        (1.0, 0.0, -5.0),
-        (0.0, 1.0, -5.5),
-        (0.5, -0.5, -6.0),
+        (0.0, 0.0, -250.0),
+        (50.0, 0.0, -250.0),
+        (0.0, 50.0, -300.0),
+        (30.0, -30.0, -200.0),
     ]
 
     print(f"{'Point':>24s}   {'Classic':>36s}   {'Triangles':>36s}   {'Max Δ':>8s}")
