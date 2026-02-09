@@ -49,7 +49,7 @@
  #define STEP_PIN_1  4
  
  // Motor 2 — Tower B
- #define DIR_PIN_2   7
+ #define DIR_PIN_2   8
  #define STEP_PIN_2  6
  
  // Motor 3 — Tower C
