@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Robot — Cartesian Control</title>
+<style>
+/* ================================================================== */
+/*  CSS Custom Properties                                              */
+/* ================================================================== */
+:root {
+  --bg:          #0f1117;
+  --bg-card:     #1a1d27;
+  --bg-input:    #252836;
+  --bg-hover:    #2c3040;
+  --border:      #2e3247;
+  --text:        #e4e6f0;
+  --text-dim:    #8b8fa3;
+  --accent:      #6c8cff;
+  --accent-glow: rgba(108,140,255,.25);
+  --green:       #4ade80;
+  --green-dim:   rgba(74,222,128,.15);
+  --red:         #f87171;
+  --red-dim:     rgba(248,113,113,.15);
+  --orange:      #fb923c;
+  --orange-dim:  rgba(251,146,60,.15);
+  --yellow:      #facc15;
+  --radius:      10px;
+  --shadow:      0 2px 12px rgba(0,0,0,.35);
+  --font:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono:        'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --axis-x:      #f87171;
+  --axis-y:      #4ade80;
+  --axis-z:      #60a5fa;
+}
+
+/* ================================================================== */
+/*  Reset & Base                                                       */
+/* ================================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* ================================================================== */
+/*  Top Bar                                                            */
+/* ================================================================== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.logo:hover { opacity: .85; }
+.nav-sep { color: var(--text-dim); font-weight: 300; }
+.nav-label { font-size: .9rem; color: var(--text); font-weight: 600; }
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  transition: background .3s;
+}
+.status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-dot.moving    { background: var(--orange); box-shadow: 0 0 8px var(--orange); animation: pulse 1s infinite; }
+.status-label {
+  font-size: .82rem;
+  color: var(--text-dim);
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ================================================================== */
+/*  Buttons                                                            */
+/* ================================================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: .85rem;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.btn:active { transform: scale(.97); }
+.btn-accent  { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-accent:hover  { background: #5a7aee; }
+.btn-green   { background: var(--green-dim); color: var(--green); border-color: rgba(74,222,128,.3); }
+.btn-red     { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,.3); }
+.btn-estop {
+  background: var(--red);
+  color: #fff;
+  border: 2px solid #dc2626;
+  font-weight: 700;
+  font-size: .85rem;
+  padding: 8px 20px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 0 14px rgba(248,113,113,.25);
+}
+.btn-estop:hover { background: #dc2626; box-shadow: 0 0 24px rgba(248,113,113,.4); }
+
+/* ================================================================== */
+/*  Layout                                                             */
+/* ================================================================== */
+.main {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 16px 20px;
+}
+
+/* ================================================================== */
+/*  Panes Row                                                          */
+/* ================================================================== */
+.panes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 960px) {
+  .panes { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .panes { grid-template-columns: 1fr; }
+}
+
+.pane {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.pane-title {
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+.pane-coords {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--text-dim);
+}
+.pane canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* ================================================================== */
+/*  Controls Bar                                                       */
+/* ================================================================== */
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 960px) {
+  .controls { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .controls { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.card-title {
+  font-size: .74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+/* ================================================================== */
+/*  Coordinate Inputs                                                  */
+/* ================================================================== */
+.xyz-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.xyz-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.xyz-label {
+  font-weight: 700;
+  font-size: .9rem;
+  width: 20px;
+  text-align: center;
+}
+.xyz-label.lx { color: var(--axis-x); }
+.xyz-label.ly { color: var(--axis-y); }
+.xyz-label.lz { color: var(--axis-z); }
+.xyz-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+.xyz-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0,0,0,.3);
+}
+.xyz-slider::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+.xyz-slider.sx::-webkit-slider-thumb { background: var(--axis-x); }
+.xyz-slider.sy::-webkit-slider-thumb { background: var(--axis-y); }
+.xyz-slider.sz::-webkit-slider-thumb { background: var(--axis-z); }
+.xyz-slider.sx::-moz-range-thumb { background: var(--axis-x); }
+.xyz-slider.sy::-moz-range-thumb { background: var(--axis-y); }
+.xyz-slider.sz::-moz-range-thumb { background: var(--axis-z); }
+
+.xyz-input {
+  width: 72px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .85rem;
+  text-align: center;
+  padding: 5px;
+  outline: none;
+}
+.xyz-input:focus { border-color: var(--accent); }
+.xyz-unit {
+  font-size: .72rem;
+  color: var(--text-dim);
+  width: 20px;
+}
+
+/* ================================================================== */
+/*  Angle Readout                                                      */
+/* ================================================================== */
+.angles-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.angle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.angle-label {
+  font-weight: 600;
+  font-size: .85rem;
+  color: var(--accent);
+  min-width: 28px;
+}
+.angle-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+.angle-bar-fill {
+  position: absolute;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width .15s, left .15s;
+}
+.angle-value {
+  font-family: var(--mono);
+  font-size: .85rem;
+  min-width: 64px;
+  text-align: right;
+}
+
+/* ================================================================== */
+/*  Geometry Config                                                    */
+/* ================================================================== */
+.geo-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.geo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.geo-label {
+  font-size: .82rem;
+  color: var(--text-dim);
+  min-width: 90px;
+}
+.geo-input {
+  width: 72px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .82rem;
+  text-align: center;
+  padding: 4px;
+  outline: none;
+}
+.geo-input:focus { border-color: var(--accent); }
+
+/* ================================================================== */
+/*  Status indicator                                                   */
+/* ================================================================== */
+.reach-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .5px;
+  transition: background .2s, color .2s;
+}
+.reach-badge.ok {
+  background: var(--green-dim);
+  color: var(--green);
+}
+.reach-badge.err {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+/* Actions row */
+.actions-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ========================== TOP BAR ========================== -->
+<header class="topbar">
+  <div class="topbar-left">
+    <a class="logo" href="/">DELTA ROBOT</a>
+    <span class="nav-sep">/</span>
+    <span class="nav-label">Cartesian Control</span>
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">Disconnected</span>
+  </div>
+  <div class="topbar-right">
+    <span class="reach-badge ok" id="reachBadge">REACHABLE</span>
+    <button class="btn btn-green" onclick="sendHome()">Home</button>
+    <button class="btn btn-estop" onclick="sendEstop()">E-STOP</button>
+  </div>
+</header>
+
+<!-- ========================== MAIN ========================== -->
+<div class="main">
+
+  <!-- ---- Three Panes ---- -->
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-header">
+        <span class="pane-title">Top View&ensp;
+          <span style="color:var(--axis-x)">X</span>&thinsp;/&thinsp;<span style="color:var(--axis-y)">Y</span>
+        </span>
+        <span class="pane-coords" id="coordsXY"></span>
+      </div>
+      <canvas id="paneXY"></canvas>
+    </div>
+    <div class="pane">
+      <div class="pane-header">
+        <span class="pane-title">Front View&ensp;
+          <span style="color:var(--axis-x)">X</span>&thinsp;/&thinsp;<span style="color:var(--axis-z)">Z</span>
+        </span>
+        <span class="pane-coords" id="coordsXZ"></span>
+      </div>
+      <canvas id="paneXZ"></canvas>
+    </div>
+    <div class="pane">
+      <div class="pane-header">
+        <span class="pane-title">Side View&ensp;
+          <span style="color:var(--axis-y)">Y</span>&thinsp;/&thinsp;<span style="color:var(--axis-z)">Z</span>
+        </span>
+        <span class="pane-coords" id="coordsYZ"></span>
+      </div>
+      <canvas id="paneYZ"></canvas>
+    </div>
+  </div>
+
+  <!-- ---- Controls ---- -->
+  <div class="controls">
+
+    <!-- Position -->
+    <div class="card">
+      <div class="card-title">Position</div>
+      <div class="xyz-group">
+        <div class="xyz-row">
+          <span class="xyz-label lx">X</span>
+          <input type="range" class="xyz-slider sx" id="sliderX" min="-4" max="4" step="0.05" value="0"
+                 oninput="onSlider('x', this.value)">
+          <input type="number" class="xyz-input" id="inputX" value="0" step="0.1"
+                 onchange="onInput('x', this.value)">
+          <span class="xyz-unit">cm</span>
+        </div>
+        <div class="xyz-row">
+          <span class="xyz-label ly">Y</span>
+          <input type="range" class="xyz-slider sy" id="sliderY" min="-4" max="4" step="0.05" value="0"
+                 oninput="onSlider('y', this.value)">
+          <input type="number" class="xyz-input" id="inputY" value="0" step="0.1"
+                 onchange="onInput('y', this.value)">
+          <span class="xyz-unit">cm</span>
+        </div>
+        <div class="xyz-row">
+          <span class="xyz-label lz">Z</span>
+          <input type="range" class="xyz-slider sz" id="sliderZ" min="-8" max="0" step="0.05" value="-5"
+                 oninput="onSlider('z', this.value)">
+          <input type="number" class="xyz-input" id="inputZ" value="-5" step="0.1"
+                 onchange="onInput('z', this.value)">
+          <span class="xyz-unit">cm</span>
+        </div>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-accent" onclick="sendPosition()">Send</button>
+        <button class="btn" onclick="centerXY()">Center XY</button>
+        <button class="btn btn-green" onclick="sendHome()">Home</button>
+      </div>
+    </div>
+
+    <!-- Angles -->
+    <div class="card">
+      <div class="card-title">Computed Angles</div>
+      <div class="angles-group">
+        <div class="angle-row">
+          <span class="angle-label">&theta;1</span>
+          <div class="angle-bar-track"><div class="angle-bar-fill" id="bar1"></div></div>
+          <span class="angle-value" id="angle1">&mdash;</span>
+        </div>
+        <div class="angle-row">
+          <span class="angle-label">&theta;2</span>
+          <div class="angle-bar-track"><div class="angle-bar-fill" id="bar2"></div></div>
+          <span class="angle-value" id="angle2">&mdash;</span>
+        </div>
+        <div class="angle-row">
+          <span class="angle-label">&theta;3</span>
+          <div class="angle-bar-track"><div class="angle-bar-fill" id="bar3"></div></div>
+          <span class="angle-value" id="angle3">&mdash;</span>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label style="font-size:.82rem;color:var(--text-dim);display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="chkLive" checked>
+          <span>Live — send on drag</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Geometry -->
+    <div class="card">
+      <div class="card-title">Robot Geometry</div>
+      <div class="geo-group">
+        <div class="geo-row">
+          <span class="geo-label">Upper arm (L)</span>
+          <input type="number" class="geo-input" id="geoL" value="2.5" step="0.1">
+        </div>
+        <div class="geo-row">
+          <span class="geo-label">Lower arm (l)</span>
+          <input type="number" class="geo-input" id="geol" value="6" step="0.1">
+        </div>
+        <div class="geo-row">
+          <span class="geo-label">Base (F)</span>
+          <input type="number" class="geo-input" id="geoF" value="4.5" step="0.1">
+        </div>
+        <div class="geo-row">
+          <span class="geo-label">Effector (E)</span>
+          <input type="number" class="geo-input" id="geoE" value="1.5" step="0.1">
+        </div>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-accent" onclick="saveGeometry()">Apply</button>
+        <button class="btn" onclick="loadGeometry()">Reset</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ========================== JAVASCRIPT ========================== -->
+<script>
+// ================================================================== //
+//  State                                                              //
+// ================================================================== //
+const pos = { x: 0, y: 0, z: -5 };
+let angles = [null, null, null];
+let reachable = true;
+let sendTimer = null;
+const SEND_INTERVAL = 60; // ms between server calls during drag
+
+// Geometry (mirrors server; used for client-side IK preview)
+let geo = { L: 2.5, l: 6.0, F: 4.5, E: 1.5 };
+
+// Workspace bounds
+const BOUNDS = {
+  x: [-4, 4],
+  y: [-4, 4],
+  z: [-8, 0],
+};
+
+// ================================================================== //
+//  Client-side Inverse Kinematics (triangles method)                  //
+// ================================================================== //
+const SQRT3 = Math.sqrt(3);
+
+function solveArm(L, l, Fd, Ed, x, y, z) {
+  const d = y - Ed + Fd;
+  const W2 = z * z + d * d;
+  if (W2 < 1e-12) return null;
+  const W = Math.sqrt(W2);
+  const sinAlpha = d / W;
+  if (sinAlpha < -1 || sinAlpha > 1) return null;
+  const alpha = Math.asin(sinAlpha) * 180 / Math.PI;
+
+  const A2 = l * l - x * x;
+  if (A2 < 0) return null;
+  const cosOmega = (W2 + L * L - A2) / (2 * L * W);
+  if (cosOmega < -1 || cosOmega > 1) return null;
+  const omega = Math.acos(cosOmega) * 180 / Math.PI;
+
+  return 90 + alpha - omega;
+}
+
+function computeIK(x, y, z) {
+  const Fd = SQRT3 * geo.F / 6;
+  const Ed = SQRT3 * geo.E / 6;
+  const t1 = solveArm(geo.L, geo.l, Fd, Ed, x, y, z);
+
+  const cos120 = -0.5, sin120 = SQRT3 / 2;
+  const x2 = x * cos120 - y * sin120;
+  const y2 = x * sin120 + y * cos120;
+  const t2 = solveArm(geo.L, geo.l, Fd, Ed, x2, y2, z);
+
+  const cos240 = -0.5, sin240 = -SQRT3 / 2;
+  const x3 = x * cos240 - y * sin240;
+  const y3 = x * sin240 + y * cos240;
+  const t3 = solveArm(geo.L, geo.l, Fd, Ed, x3, y3, z);
+
+  if (t1 === null || t2 === null || t3 === null) return null;
+  return [t1, t2, t3];
+}
+
+// ================================================================== //
+//  Canvas Pane Setup                                                  //
+// ================================================================== //
+const panes = [];
+
+function createPane(canvasId, hAxis, vAxis, hRange, vRange, coordsId) {
+  const canvas = document.getElementById(canvasId);
+  const pane = {
+    canvas,
+    ctx: null,
+    hAxis, vAxis,
+    hRange: [...hRange],
+    vRange: [...vRange],
+    coordsEl: document.getElementById(coordsId),
+    margin: 32,
+    dragging: false,
+  };
+  panes.push(pane);
+  setupCanvasDPI(pane);
+
+  // Mouse events
+  canvas.addEventListener('pointerdown', e => onPointerDown(e, pane));
+  canvas.addEventListener('pointermove', e => onPointerMove(e, pane));
+  canvas.addEventListener('pointerup', e => onPointerUp(e, pane));
+  canvas.addEventListener('pointerleave', e => onPointerUp(e, pane));
+
+  return pane;
+}
+
+function setupCanvasDPI(pane) {
+  const canvas = pane.canvas;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  pane.ctx = canvas.getContext('2d');
+  pane.ctx.scale(dpr, dpr);
+  pane.w = w;
+  pane.h = h;
+}
+
+// Coordinate mapping
+function worldToCanvas(pane, h, v) {
+  const m = pane.margin;
+  const dw = pane.w - 2 * m;
+  const dh = pane.h - 2 * m;
+  return {
+    x: m + (h - pane.hRange[0]) / (pane.hRange[1] - pane.hRange[0]) * dw,
+    y: m + (pane.vRange[1] - v) / (pane.vRange[1] - pane.vRange[0]) * dh,
+  };
+}
+
+function canvasToWorld(pane, cx, cy) {
+  const m = pane.margin;
+  const dw = pane.w - 2 * m;
+  const dh = pane.h - 2 * m;
+  return {
+    h: clamp((cx - m) / dw * (pane.hRange[1] - pane.hRange[0]) + pane.hRange[0], pane.hRange[0], pane.hRange[1]),
+    v: clamp(pane.vRange[1] - (cy - m) / dh * (pane.vRange[1] - pane.vRange[0]), pane.vRange[0], pane.vRange[1]),
+  };
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ================================================================== //
+//  Pointer Events                                                     //
+// ================================================================== //
+function getCanvasPos(e, pane) {
+  const rect = pane.canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function onPointerDown(e, pane) {
+  e.preventDefault();
+  pane.canvas.setPointerCapture(e.pointerId);
+  pane.dragging = true;
+  applyPointer(e, pane);
+}
+
+function onPointerMove(e, pane) {
+  if (!pane.dragging) return;
+  e.preventDefault();
+  applyPointer(e, pane);
+}
+
+function onPointerUp(e, pane) {
+  if (!pane.dragging) return;
+  pane.dragging = false;
+  // One final send
+  scheduleSend(true);
+}
+
+function applyPointer(e, pane) {
+  const cp = getCanvasPos(e, pane);
+  const world = canvasToWorld(pane, cp.x, cp.y);
+  pos[pane.hAxis] = round2(world.h);
+  pos[pane.vAxis] = round2(world.v);
+  syncUI();
+  updateIK();
+  renderAll();
+  scheduleSend(false);
+}
+
+function round2(v) { return Math.round(v * 20) / 20; } // 0.05 step
+
+// ================================================================== //
+//  Rendering                                                          //
+// ================================================================== //
+const GRID_COLOR     = 'rgba(46,50,71,.6)';
+const GRID_COLOR_MAJ = 'rgba(46,50,71,1)';
+const AXIS_COLORS    = { x: '#f87171', y: '#4ade80', z: '#60a5fa' };
+const DOT_COLOR_OK   = '#6c8cff';
+const DOT_COLOR_ERR  = '#f87171';
+const DOT_GLOW_OK    = 'rgba(108,140,255,.4)';
+const DOT_GLOW_ERR   = 'rgba(248,113,113,.4)';
+
+function renderAll() {
+  for (const pane of panes) renderPane(pane);
+}
+
+function renderPane(pane) {
+  const { ctx, w, h, margin: m, hAxis, vAxis, hRange, vRange } = pane;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const dw = w - 2 * m;
+  const dh = h - 2 * m;
+
+  // Grid lines
+  ctx.lineWidth = 1;
+  for (let v = Math.ceil(hRange[0]); v <= hRange[1]; v++) {
+    const cx = m + (v - hRange[0]) / (hRange[1] - hRange[0]) * dw;
+    ctx.strokeStyle = (v === 0) ? AXIS_COLORS[hAxis] : (v % 2 === 0 ? GRID_COLOR_MAJ : GRID_COLOR);
+    ctx.globalAlpha = (v === 0) ? 0.7 : 1;
+    ctx.beginPath(); ctx.moveTo(cx, m); ctx.lineTo(cx, m + dh); ctx.stroke();
+    ctx.globalAlpha = 1;
+    // Tick label
+    if (v % 2 === 0) {
+      ctx.fillStyle = 'rgba(139,143,163,.6)';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(v, cx, h - m / 4 + 2);
+    }
+  }
+  for (let v = Math.ceil(vRange[0]); v <= vRange[1]; v++) {
+    const cy = m + (vRange[1] - v) / (vRange[1] - vRange[0]) * dh;
+    ctx.strokeStyle = (v === 0) ? AXIS_COLORS[vAxis] : (v % 2 === 0 ? GRID_COLOR_MAJ : GRID_COLOR);
+    ctx.globalAlpha = (v === 0) ? 0.7 : 1;
+    ctx.beginPath(); ctx.moveTo(m, cy); ctx.lineTo(m + dw, cy); ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (v % 2 === 0) {
+      ctx.fillStyle = 'rgba(139,143,163,.6)';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(v, m - 6, cy + 3);
+    }
+  }
+
+  // Axis labels
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = AXIS_COLORS[hAxis];
+  ctx.fillText(hAxis.toUpperCase(), w / 2, h - 2);
+  ctx.save();
+  ctx.translate(10, h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = AXIS_COLORS[vAxis];
+  ctx.fillText(vAxis.toUpperCase(), 0, 0);
+  ctx.restore();
+
+  // End-effector dot
+  const dotPos = worldToCanvas(pane, pos[hAxis], pos[vAxis]);
+  const dotColor = reachable ? DOT_COLOR_OK : DOT_COLOR_ERR;
+  const glowColor = reachable ? DOT_GLOW_OK : DOT_GLOW_ERR;
+
+  // Crosshair lines
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = dotColor;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(dotPos.x, m); ctx.lineTo(dotPos.x, m + dh); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(m, dotPos.y); ctx.lineTo(m + dw, dotPos.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // Glow
+  const grad = ctx.createRadialGradient(dotPos.x, dotPos.y, 0, dotPos.x, dotPos.y, 20);
+  grad.addColorStop(0, glowColor);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(dotPos.x, dotPos.y, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Dot
+  ctx.fillStyle = dotColor;
+  ctx.beginPath();
+  ctx.arc(dotPos.x, dotPos.y, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // White center
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(dotPos.x, dotPos.y, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Coordinate tooltip near dot
+  const hVal = pos[hAxis].toFixed(1);
+  const vVal = pos[vAxis].toFixed(1);
+  pane.coordsEl.innerHTML =
+    `<span style="color:${AXIS_COLORS[hAxis]}">${hAxis.toUpperCase()}=${hVal}</span>&ensp;` +
+    `<span style="color:${AXIS_COLORS[vAxis]}">${vAxis.toUpperCase()}=${vVal}</span>`;
+}
+
+// ================================================================== //
+//  UI Sync                                                            //
+// ================================================================== //
+function syncUI() {
+  document.getElementById('sliderX').value = pos.x;
+  document.getElementById('sliderY').value = pos.y;
+  document.getElementById('sliderZ').value = pos.z;
+  document.getElementById('inputX').value = pos.x;
+  document.getElementById('inputY').value = pos.y;
+  document.getElementById('inputZ').value = pos.z;
+}
+
+function onSlider(axis, val) {
+  pos[axis] = parseFloat(val);
+  document.getElementById('input' + axis.toUpperCase()).value = val;
+  updateIK();
+  renderAll();
+  scheduleSend(false);
+}
+
+function onInput(axis, val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return;
+  pos[axis] = clamp(v, BOUNDS[axis][0], BOUNDS[axis][1]);
+  document.getElementById('slider' + axis.toUpperCase()).value = pos[axis];
+  updateIK();
+  renderAll();
+  scheduleSend(true);
+}
+
+function updateIK() {
+  const result = computeIK(pos.x, pos.y, pos.z);
+  if (result) {
+    angles = result;
+    reachable = true;
+  } else {
+    angles = [null, null, null];
+    reachable = false;
+  }
+  updateAngleDisplay();
+  updateReachBadge();
+}
+
+function updateAngleDisplay() {
+  for (let i = 0; i < 3; i++) {
+    const valEl = document.getElementById('angle' + (i + 1));
+    const barEl = document.getElementById('bar' + (i + 1));
+    if (angles[i] !== null) {
+      const a = angles[i];
+      valEl.textContent = a.toFixed(1) + '\u00b0';
+      valEl.style.color = '';
+      // Map angle to bar: -90..+90 → 0%..100%
+      const pct = clamp((a + 90) / 180 * 100, 0, 100);
+      const left = Math.min(pct, 50);
+      const width = Math.abs(pct - 50);
+      barEl.style.left = left + '%';
+      barEl.style.width = width + '%';
+    } else {
+      valEl.innerHTML = '&mdash;';
+      valEl.style.color = 'var(--red)';
+      barEl.style.width = '0';
+    }
+  }
+}
+
+function updateReachBadge() {
+  const badge = document.getElementById('reachBadge');
+  if (reachable) {
+    badge.className = 'reach-badge ok';
+    badge.textContent = 'REACHABLE';
+  } else {
+    badge.className = 'reach-badge err';
+    badge.textContent = 'UNREACHABLE';
+  }
+}
+
+function centerXY() {
+  pos.x = 0;
+  pos.y = 0;
+  syncUI();
+  updateIK();
+  renderAll();
+  scheduleSend(true);
+}
+
+// ================================================================== //
+//  Server Communication                                               //
+// ================================================================== //
+let lastSendTime = 0;
+
+function scheduleSend(immediate) {
+  if (!document.getElementById('chkLive').checked) return;
+  if (!reachable) return;
+
+  const now = performance.now();
+  if (immediate || now - lastSendTime >= SEND_INTERVAL) {
+    clearTimeout(sendTimer);
+    sendTimer = null;
+    doSend();
+  } else if (!sendTimer) {
+    sendTimer = setTimeout(() => {
+      sendTimer = null;
+      doSend();
+    }, SEND_INTERVAL - (now - lastSendTime));
+  }
+}
+
+async function doSend() {
+  lastSendTime = performance.now();
+  try {
+    await fetch('/api/move_xyz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: pos.x, y: pos.y, z: pos.z }),
+    });
+  } catch (e) {
+    console.error('move_xyz failed', e);
+  }
+}
+
+function sendPosition() {
+  if (!reachable) return;
+  doSend();
+}
+
+async function sendHome() {
+  pos.x = 0; pos.y = 0; pos.z = -5;
+  syncUI(); updateIK(); renderAll();
+  try {
+    await fetch('/api/move_xyz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 0, y: 0, z: -5 }),
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function sendEstop() {
+  try {
+    await fetch('/api/estop', { method: 'POST' });
+  } catch (e) { console.error(e); }
+}
+
+// ================================================================== //
+//  Geometry Config                                                    //
+// ================================================================== //
+async function loadGeometry() {
+  try {
+    const res = await fetch('/api/ik_config');
+    const data = await res.json();
+    geo.L = data.upper_arm;
+    geo.l = data.lower_arm;
+    geo.F = data.base;
+    geo.E = data.effector;
+    document.getElementById('geoL').value = geo.L;
+    document.getElementById('geol').value = geo.l;
+    document.getElementById('geoF').value = geo.F;
+    document.getElementById('geoE').value = geo.E;
+    updateIK();
+    renderAll();
+  } catch (e) { console.error(e); }
+}
+
+async function saveGeometry() {
+  geo.L = parseFloat(document.getElementById('geoL').value) || geo.L;
+  geo.l = parseFloat(document.getElementById('geol').value) || geo.l;
+  geo.F = parseFloat(document.getElementById('geoF').value) || geo.F;
+  geo.E = parseFloat(document.getElementById('geoE').value) || geo.E;
+  try {
+    await fetch('/api/ik_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        upper_arm: geo.L, lower_arm: geo.l,
+        base: geo.F, effector: geo.E,
+      }),
+    });
+  } catch (e) { console.error(e); }
+  updateIK();
+  renderAll();
+}
+
+// ================================================================== //
+//  Status Polling                                                     //
+// ================================================================== //
+async function pollState() {
+  try {
+    const res = await fetch('/api/state');
+    const s = await res.json();
+    const dot = document.getElementById('statusDot');
+    const lbl = document.getElementById('statusLabel');
+    dot.className = 'status-dot';
+    if (!s.connected) {
+      lbl.textContent = 'Disconnected';
+    } else if (s.moving) {
+      dot.classList.add('connected', 'moving');
+      lbl.textContent = 'Moving \u2014 ' + s.port;
+    } else {
+      dot.classList.add('connected');
+      lbl.textContent = 'Idle \u2014 ' + s.port;
+    }
+  } catch (e) { /* offline */ }
+}
+
+// ================================================================== //
+//  Resize handling                                                    //
+// ================================================================== //
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    for (const p of panes) setupCanvasDPI(p);
+    renderAll();
+  }, 100);
+});
+
+// ================================================================== //
+//  Init                                                               //
+// ================================================================== //
+createPane('paneXY', 'x', 'y', BOUNDS.x, BOUNDS.y, 'coordsXY');
+createPane('paneXZ', 'x', 'z', BOUNDS.x, BOUNDS.z, 'coordsXZ');
+createPane('paneYZ', 'y', 'z', BOUNDS.y, BOUNDS.z, 'coordsYZ');
+
+loadGeometry();
+syncUI();
+updateIK();
+renderAll();
+
+setInterval(pollState, 500);
+</script>
+
+</body>
+</html>

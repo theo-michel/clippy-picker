@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta Robot Controller</title>
+<style>
+/* ================================================================== */
+/*  CSS Custom Properties                                              */
+/* ================================================================== */
+:root {
+  --bg:          #0f1117;
+  --bg-card:     #1a1d27;
+  --bg-input:    #252836;
+  --bg-hover:    #2c3040;
+  --border:      #2e3247;
+  --text:        #e4e6f0;
+  --text-dim:    #8b8fa3;
+  --accent:      #6c8cff;
+  --accent-glow: rgba(108,140,255,.25);
+  --green:       #4ade80;
+  --green-dim:   rgba(74,222,128,.15);
+  --red:         #f87171;
+  --red-dim:     rgba(248,113,113,.15);
+  --orange:      #fb923c;
+  --orange-dim:  rgba(251,146,60,.15);
+  --yellow:      #facc15;
+  --radius:      10px;
+  --shadow:      0 2px 12px rgba(0,0,0,.35);
+  --font:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono:        'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+}
+
+/* ================================================================== */
+/*  Reset & Base                                                       */
+/* ================================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ================================================================== */
+/*  Top Bar                                                            */
+/* ================================================================== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.logo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: var(--accent);
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  transition: background .3s;
+}
+.status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-dot.moving    { background: var(--orange); box-shadow: 0 0 8px var(--orange); animation: pulse 1s infinite; }
+.status-label {
+  font-size: .82rem;
+  color: var(--text-dim);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
+/* Connection bar */
+.conn-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.conn-bar select, .conn-bar input[type="text"] {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: .85rem;
+  font-family: var(--mono);
+  outline: none;
+}
+.conn-bar select:focus, .conn-bar input:focus {
+  border-color: var(--accent);
+}
+
+/* ================================================================== */
+/*  Buttons                                                            */
+/* ================================================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: .85rem;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.btn-accent  { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-accent:hover  { background: #5a7aee; }
+
+.btn-green   { background: var(--green-dim); color: var(--green); border-color: rgba(74,222,128,.3); }
+.btn-green:hover   { background: rgba(74,222,128,.25); }
+
+.btn-orange  { background: var(--orange-dim); color: var(--orange); border-color: rgba(251,146,60,.3); }
+.btn-orange:hover  { background: rgba(251,146,60,.25); }
+
+.btn-red     { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,.3); }
+.btn-red:hover     { background: rgba(248,113,113,.25); }
+
+.btn-estop {
+  background: var(--red);
+  color: #fff;
+  border: 2px solid #dc2626;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 12px 28px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 0 20px rgba(248,113,113,.3);
+}
+.btn-estop:hover {
+  background: #dc2626;
+  box-shadow: 0 0 30px rgba(248,113,113,.5);
+}
+
+/* ================================================================== */
+/*  Layout                                                             */
+/* ================================================================== */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 20px 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+}
+
+/* ================================================================== */
+/*  Cards                                                              */
+/* ================================================================== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+.card-title {
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+
+/* ================================================================== */
+/*  Motor Controls                                                     */
+/* ================================================================== */
+.motor-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.motor-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.motor-label {
+  font-weight: 600;
+  font-size: .9rem;
+  min-width: 68px;
+  color: var(--accent);
+}
+.motor-pos {
+  font-family: var(--mono);
+  font-size: .85rem;
+  color: var(--text-dim);
+  min-width: 80px;
+  text-align: right;
+}
+.motor-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+.motor-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+.motor-slider::-moz-range-thumb {
+  width: 18px; height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+.motor-input {
+  width: 72px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .85rem;
+  text-align: center;
+  padding: 5px;
+  outline: none;
+}
+.motor-input:focus { border-color: var(--accent); }
+.motor-unit {
+  font-size: .78rem;
+  color: var(--text-dim);
+}
+
+/* ================================================================== */
+/*  Coordinated Move                                                   */
+/* ================================================================== */
+.coord-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.coord-row label {
+  font-size: .82rem;
+  color: var(--text-dim);
+  min-width: 28px;
+}
+.coord-row input {
+  width: 80px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .85rem;
+  text-align: center;
+  padding: 6px;
+  outline: none;
+}
+.coord-row input:focus { border-color: var(--accent); }
+
+/* ================================================================== */
+/*  Parameters                                                         */
+/* ================================================================== */
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.param-label {
+  font-size: .85rem;
+  color: var(--text-dim);
+  min-width: 110px;
+}
+.param-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+.param-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.param-slider::-moz-range-thumb {
+  width: 16px; height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+.param-value {
+  font-family: var(--mono);
+  font-size: .82rem;
+  color: var(--text);
+  min-width: 64px;
+  text-align: right;
+}
+
+/* ================================================================== */
+/*  Actions grid                                                       */
+/* ================================================================== */
+.actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.estop-wrapper {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* ================================================================== */
+/*  Command log                                                        */
+/* ================================================================== */
+.log-panel {
+  grid-column: 1 / -1;
+}
+.log-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: .78rem;
+  line-height: 1.7;
+  padding: 8px 0;
+}
+.log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.log-entry:hover { background: var(--bg-input); }
+.log-time  { color: var(--text-dim); min-width: 60px; }
+.log-cmd   { color: var(--accent); min-width: 140px; }
+.log-resp  { color: var(--text); }
+.log-resp.err { color: var(--red); }
+
+/* Raw command */
+.raw-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.raw-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .85rem;
+  padding: 7px 10px;
+  outline: none;
+}
+.raw-input:focus { border-color: var(--accent); }
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ================================================================== */
+/*  Music Reactive                                                     */
+/* ================================================================== */
+.music-btn {
+  padding: 14px 28px;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-radius: 8px;
+  width: 100%;
+  transition: background .2s, border-color .2s, box-shadow .3s;
+}
+.music-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 0 24px var(--accent-glow);
+  animation: music-pulse 1.5s ease-in-out infinite;
+}
+@keyframes music-pulse {
+  0%, 100% { box-shadow: 0 0 16px var(--accent-glow); }
+  50%      { box-shadow: 0 0 32px var(--accent-glow), 0 0 48px rgba(108,140,255,.12); }
+}
+.music-canvas {
+  width: 100%;
+  height: 80px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin: 14px 0 10px;
+  display: block;
+}
+.music-bands {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.music-band {
+  flex: 1;
+  text-align: center;
+  padding: 10px 8px;
+  background: var(--bg-input);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.band-label {
+  font-size: .72rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.band-value {
+  font-family: var(--mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.band-bass  .band-value { color: var(--red); }
+.band-mid   .band-value { color: var(--yellow); }
+.band-treble .band-value { color: var(--green); }
+.music-inactive-msg {
+  text-align: center;
+  padding: 20px 0;
+  font-size: .82rem;
+  color: var(--text-dim);
+}
+</style>
+</head>
+<body>
+
+<!-- ========================== TOP BAR ========================== -->
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="logo">DELTA ROBOT</span>
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-label" id="statusLabel">Disconnected</span>
+  </div>
+  <div class="conn-bar">
+    <select id="portSelect">
+      <option value="">-- select port --</option>
+    </select>
+    <button class="btn btn-green" id="btnConnect" onclick="connect()">Connect</button>
+    <button class="btn btn-orange" id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+    <button class="btn" onclick="connect(true)">Simulation</button>
+    <button class="btn" onclick="refreshPorts()">Refresh</button>
+  </div>
+</header>
+
+<!-- ========================== MAIN GRID ========================== -->
+<main class="main">
+
+  <!-- ---- Individual Motor Control ---- -->
+  <div class="card">
+    <div class="card-title">Individual Motor Control</div>
+    <div class="motor-group">
+      <div class="motor-row">
+        <span class="motor-label">Motor 1</span>
+        <input type="range" class="motor-slider" id="slider1" min="-360" max="360" value="0"
+               oninput="syncSlider(1)" onchange="sendMotor(1)">
+        <input type="number" class="motor-input" id="input1" value="0"
+               onchange="syncInput(1); sendMotor(1)">
+        <span class="motor-unit">deg</span>
+        <span class="motor-pos" id="pos1">0 steps</span>
+      </div>
+      <div class="motor-row">
+        <span class="motor-label">Motor 2</span>
+        <input type="range" class="motor-slider" id="slider2" min="-360" max="360" value="0"
+               oninput="syncSlider(2)" onchange="sendMotor(2)">
+        <input type="number" class="motor-input" id="input2" value="0"
+               onchange="syncInput(2); sendMotor(2)">
+        <span class="motor-unit">deg</span>
+        <span class="motor-pos" id="pos2">0 steps</span>
+      </div>
+      <div class="motor-row">
+        <span class="motor-label">Motor 3</span>
+        <input type="range" class="motor-slider" id="slider3" min="-360" max="360" value="0"
+               oninput="syncSlider(3)" onchange="sendMotor(3)">
+        <input type="number" class="motor-input" id="input3" value="0"
+               onchange="syncInput(3); sendMotor(3)">
+        <span class="motor-unit">deg</span>
+        <span class="motor-pos" id="pos3">0 steps</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Coordinated Move ---- -->
+  <div class="card">
+    <div class="card-title">Coordinated Move</div>
+
+    <p style="font-size:.82rem;color:var(--text-dim);margin-bottom:12px;">Absolute (degrees)</p>
+    <div class="coord-row" style="margin-bottom:14px;">
+      <label>M1</label><input type="number" id="coordD1" value="0">
+      <label>M2</label><input type="number" id="coordD2" value="0">
+      <label>M3</label><input type="number" id="coordD3" value="0">
+      <button class="btn btn-accent" onclick="sendCoordMove()">Go</button>
+    </div>
+
+    <p style="font-size:.82rem;color:var(--text-dim);margin-bottom:12px;">Relative (degrees)</p>
+    <div class="coord-row">
+      <label>M1</label><input type="number" id="relD1" value="0">
+      <label>M2</label><input type="number" id="relD2" value="0">
+      <label>M3</label><input type="number" id="relD3" value="0">
+      <button class="btn btn-accent" onclick="sendRelMove()">Go</button>
+    </div>
+  </div>
+
+  <!-- ---- Parameters ---- -->
+  <div class="card">
+    <div class="card-title">Parameters</div>
+
+    <div class="param-row">
+      <span class="param-label">Max Speed</span>
+      <input type="range" class="param-slider" id="speedSlider" min="1" max="300" value="60"
+             oninput="speedDirty = true; document.getElementById('speedVal').textContent = this.value + ' RPM'">
+      <span class="param-value" id="speedVal">60 RPM</span>
+      <button class="btn" onclick="sendSpeed()">Set</button>
+    </div>
+
+    <div class="param-row">
+      <span class="param-label">Acceleration</span>
+      <input type="range" class="param-slider" id="accelSlider" min="10" max="500" value="120"
+             oninput="accelDirty = true; document.getElementById('accelVal').textContent = this.value + ' RPM/s'">
+      <span class="param-value" id="accelVal">120 RPM/s</span>
+      <button class="btn" onclick="sendAccel()">Set</button>
+    </div>
+
+    <div class="param-row" style="margin-top:6px;">
+      <span class="param-label">Slider Range</span>
+      <input type="range" class="param-slider" id="rangeSlider" min="90" max="3600" value="360" step="90"
+             oninput="updateSliderRange(this.value)">
+      <span class="param-value" id="rangeVal">&plusmn;360&deg;</span>
+    </div>
+  </div>
+
+  <!-- ---- Actions ---- -->
+  <div class="card">
+    <div class="card-title">Actions</div>
+    <div class="actions-grid">
+      <button class="btn btn-green" onclick="sendHome()">Home (0,0,0)</button>
+      <button class="btn btn-orange" onclick="sendStop()">Stop</button>
+      <button class="btn" onclick="sendEnable()">Enable Drivers</button>
+      <button class="btn" onclick="sendDisable()">Disable Drivers</button>
+      <button class="btn" onclick="sendZero()">Set Zero Here</button>
+      <button class="btn" onclick="resetSliders()">Reset Sliders</button>
+    </div>
+    <div class="estop-wrapper">
+      <button class="btn btn-estop" onclick="sendEstop()">E-STOP</button>
+    </div>
+  </div>
+
+  <!-- ---- Music Reactive ---- -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-title">Music Reactive</div>
+    <button class="btn music-btn" id="btnMusic" onclick="toggleMusic()">
+      Start Music Mode
+    </button>
+    <canvas class="music-canvas" id="musicCanvas"></canvas>
+    <div id="musicInfo">
+      <div class="music-bands">
+        <div class="music-band band-bass">
+          <div class="band-label">Bass &rarr; Motor 1</div>
+          <div class="band-value" id="bandBass">&mdash;</div>
+        </div>
+        <div class="music-band band-mid">
+          <div class="band-label">Mid &rarr; Motor 2</div>
+          <div class="band-value" id="bandMid">&mdash;</div>
+        </div>
+        <div class="music-band band-treble">
+          <div class="band-label">Treble &rarr; Motor 3</div>
+          <div class="band-value" id="bandTreble">&mdash;</div>
+        </div>
+      </div>
+
+      <div class="param-row" style="margin-top:14px;">
+        <span class="param-label">Sensitivity</span>
+        <input type="range" class="param-slider" id="musicSensitivity" min="0.5" max="4" value="1.8" step="0.1"
+               oninput="document.getElementById('sensVal').textContent = this.value + 'x'">
+        <span class="param-value" id="sensVal">1.8x</span>
+      </div>
+      <div class="param-row">
+        <span class="param-label">Max Angle</span>
+        <input type="range" class="param-slider" id="musicMaxAngle" min="15" max="180" value="90" step="5"
+               oninput="document.getElementById('maxAngleVal').textContent = this.value + '&deg;'">
+        <span class="param-value" id="maxAngleVal">90&deg;</span>
+      </div>
+      <div class="param-row">
+        <span class="param-label">Smoothing</span>
+        <input type="range" class="param-slider" id="musicSmoothing" min="0.1" max="0.95" value="0.82" step="0.01"
+               oninput="document.getElementById('smoothVal').textContent = this.value">
+        <span class="param-value" id="smoothVal">0.82</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Command Log ---- -->
+  <div class="card log-panel">
+    <div class="card-title">Command Log</div>
+    <div class="raw-row">
+      <input type="text" class="raw-input" id="rawInput" placeholder="Type raw serial command…"
+             onkeydown="if(event.key==='Enter') sendRaw()">
+      <button class="btn btn-accent" onclick="sendRaw()">Send</button>
+      <button class="btn" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="log-scroll" id="logScroll"></div>
+  </div>
+
+</main>
+
+<!-- ========================== JAVASCRIPT ========================== -->
+<script>
+const API = '';  // same origin
+
+// Dirty flags — prevent pollState from overwriting sliders the user is adjusting
+let speedDirty = false;
+let accelDirty = false;
+
+// ---- Port list ----
+async function refreshPorts() {
+  try {
+    const res = await fetch(`${API}/api/ports`);
+    const ports = await res.json();
+    const sel = document.getElementById('portSelect');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">-- select port --</option>';
+    ports.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.device;
+      opt.textContent = `${p.device}  (${p.description})`;
+      sel.appendChild(opt);
+    });
+    if (prev) sel.value = prev;
+  } catch(e) {
+    console.error('Failed to list ports', e);
+  }
+}
+
+// ---- Connect / Disconnect ----
+async function connect(sim = false) {
+  const port = document.getElementById('portSelect').value;
+  if (!sim && !port) { alert('Select a serial port first.'); return; }
+  try {
+    const res = await fetch(`${API}/api/connect`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(sim ? {sim: true} : {port})
+    });
+    const data = await res.json();
+    if (!data.ok) alert(data.message);
+    updateConnUI(data.ok);
+  } catch(e) { alert('Connection failed: ' + e); }
+}
+
+async function disconnect() {
+  await fetch(`${API}/api/disconnect`, {method: 'POST'});
+  updateConnUI(false);
+}
+
+function updateConnUI(connected) {
+  document.getElementById('btnConnect').disabled = connected;
+  document.getElementById('btnDisconnect').disabled = !connected;
+}
+
+// ---- Slider ↔ Input sync ----
+function syncSlider(n) {
+  document.getElementById('input' + n).value = document.getElementById('slider' + n).value;
+}
+function syncInput(n) {
+  document.getElementById('slider' + n).value = document.getElementById('input' + n).value;
+}
+
+function updateSliderRange(val) {
+  document.getElementById('rangeVal').innerHTML = `&plusmn;${val}&deg;`;
+  for (let i = 1; i <= 3; i++) {
+    const s = document.getElementById('slider' + i);
+    s.min = -val;
+    s.max = val;
+  }
+}
+
+function resetSliders() {
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('slider' + i).value = 0;
+    document.getElementById('input' + i).value = 0;
+  }
+}
+
+// ---- API helpers ----
+async function post(endpoint, body = {}) {
+  try {
+    const res = await fetch(`${API}${endpoint}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    return await res.json();
+  } catch(e) {
+    console.error(e);
+    return {ok: false, response: String(e)};
+  }
+}
+
+// ---- Motor commands ----
+function sendMotor(n) {
+  const deg = parseFloat(document.getElementById('input' + n).value) || 0;
+  post('/api/move_motor', {motor: n, degrees: deg});
+}
+
+function sendCoordMove() {
+  const d1 = parseFloat(document.getElementById('coordD1').value) || 0;
+  const d2 = parseFloat(document.getElementById('coordD2').value) || 0;
+  const d3 = parseFloat(document.getElementById('coordD3').value) || 0;
+  post('/api/move', {d1, d2, d3});
+}
+
+function sendRelMove() {
+  const d1 = parseFloat(document.getElementById('relD1').value) || 0;
+  const d2 = parseFloat(document.getElementById('relD2').value) || 0;
+  const d3 = parseFloat(document.getElementById('relD3').value) || 0;
+  post('/api/move_relative', {d1, d2, d3});
+}
+
+function sendHome()  { post('/api/home'); resetSliders(); }
+function sendStop()  { post('/api/stop'); }
+function sendEstop() { post('/api/estop'); }
+function sendEnable()  { post('/api/enable'); }
+function sendDisable() { post('/api/disable'); }
+function sendZero()    { post('/api/zero'); resetSliders(); }
+
+function sendSpeed() {
+  const rpm = parseInt(document.getElementById('speedSlider').value);
+  post('/api/speed', {rpm}).then(() => { speedDirty = false; });
+}
+function sendAccel() {
+  const value = parseInt(document.getElementById('accelSlider').value);
+  post('/api/acceleration', {value}).then(() => { accelDirty = false; });
+}
+
+function sendRaw() {
+  const inp = document.getElementById('rawInput');
+  const cmd = inp.value.trim();
+  if (!cmd) return;
+  post('/api/raw', {command: cmd});
+  inp.value = '';
+}
+
+// ---- Status polling ----
+async function pollState() {
+  try {
+    const res = await fetch(`${API}/api/state`);
+    const s = await res.json();
+
+    const dot = document.getElementById('statusDot');
+    const lbl = document.getElementById('statusLabel');
+    dot.className = 'status-dot';
+
+    if (!s.connected) {
+      lbl.textContent = 'Disconnected';
+    } else if (s.moving) {
+      dot.classList.add('connected', 'moving');
+      lbl.textContent = `Moving — ${s.port}`;
+    } else {
+      dot.classList.add('connected');
+      lbl.textContent = `Idle — ${s.port}`;
+    }
+
+    updateConnUI(s.connected);
+
+    // Positions
+    for (let i = 0; i < 3; i++) {
+      document.getElementById('pos' + (i+1)).textContent = s.positions[i] + ' steps';
+    }
+
+    // Sync parameter sliders only when the user isn't adjusting them
+    if (!speedDirty) {
+      document.getElementById('speedSlider').value = s.speed_rpm;
+      document.getElementById('speedVal').textContent = s.speed_rpm + ' RPM';
+    }
+    if (!accelDirty) {
+      document.getElementById('accelSlider').value = s.accel_rpm_s;
+      document.getElementById('accelVal').textContent = s.accel_rpm_s + ' RPM/s';
+    }
+  } catch(e) { /* server down */ }
+}
+
+// ---- Log polling ----
+async function pollLog() {
+  try {
+    const res = await fetch(`${API}/api/log`);
+    const entries = await res.json();
+    const container = document.getElementById('logScroll');
+    container.innerHTML = entries.map(e =>
+      `<div class="log-entry">` +
+        `<span class="log-time">${e.time}</span>` +
+        `<span class="log-cmd">${esc(e.cmd)}</span>` +
+        `<span class="log-resp ${e.ok ? '' : 'err'}">${esc(e.response)}</span>` +
+      `</div>`
+    ).join('');
+  } catch(e) {}
+}
+
+function clearLog() {
+  document.getElementById('logScroll').innerHTML = '';
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ---- Music Reactive Mode ----
+let musicActive = false;
+let audioCtx = null;
+let analyser = null;
+let micStream = null;
+let musicRAF = null;
+let lastMusicSend = 0;
+let savedSpeedRPM = 60;
+let savedAccelRPM = 120;
+
+// Smoothed band values for fluid motion
+let smoothBass = 0, smoothMid = 0, smoothTreble = 0;
+
+const MUSIC_SEND_INTERVAL = 80; // ms between motor commands
+
+async function toggleMusic() {
+  if (musicActive) {
+    stopMusic();
+  } else {
+    await startMusic();
+  }
+}
+
+async function startMusic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(e) {
+    alert('Microphone access denied or unavailable.\n\n' + e.message);
+    return;
+  }
+
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = parseFloat(document.getElementById('musicSmoothing').value);
+    source.connect(analyser);
+
+    // Save current speed/accel so we can restore later
+    savedSpeedRPM = parseInt(document.getElementById('speedSlider').value) || 60;
+    savedAccelRPM = parseInt(document.getElementById('accelSlider').value) || 120;
+
+    // Boost speed & acceleration for snappy reactive motion
+    await post('/api/speed', { rpm: 250 });
+    await post('/api/acceleration', { value: 500 });
+
+    smoothBass = 0; smoothMid = 0; smoothTreble = 0;
+    musicActive = true;
+
+    const btn = document.getElementById('btnMusic');
+    btn.textContent = 'Stop Music Mode';
+    btn.classList.add('active');
+
+    musicLoop();
+  } catch(e) {
+    alert('Audio setup failed: ' + e.message);
+    if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  }
+}
+
+function stopMusic() {
+  musicActive = false;
+  if (musicRAF) { cancelAnimationFrame(musicRAF); musicRAF = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (audioCtx)  { audioCtx.close(); audioCtx = null; }
+  analyser = null;
+
+  const btn = document.getElementById('btnMusic');
+  btn.textContent = 'Start Music Mode';
+  btn.classList.remove('active');
+
+  // Clear visualisation
+  const canvas = document.getElementById('musicCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  document.getElementById('bandBass').innerHTML   = '&mdash;';
+  document.getElementById('bandMid').innerHTML    = '&mdash;';
+  document.getElementById('bandTreble').innerHTML = '&mdash;';
+
+  // Restore speed & acceleration, then home the robot
+  post('/api/speed', { rpm: savedSpeedRPM });
+  post('/api/acceleration', { value: savedAccelRPM });
+  post('/api/home');
+}
+
+function musicLoop() {
+  if (!musicActive || !analyser) return;
+  musicRAF = requestAnimationFrame(musicLoop);
+
+  // Update analyser smoothing in real-time
+  analyser.smoothingTimeConstant = parseFloat(document.getElementById('musicSmoothing').value);
+
+  const bufLen = analyser.frequencyBinCount;
+  const freqData = new Uint8Array(bufLen);
+  analyser.getByteFrequencyData(freqData);
+
+  // Draw frequency bars
+  drawMusicVis(freqData, bufLen);
+
+  // Split spectrum into three bands
+  // Bass: 0–300 Hz (roughly first ~15% of bins)
+  // Mid:  300–2000 Hz (next ~35%)
+  // Treble: 2000 Hz+ (remaining ~50%)
+  const nyquist = audioCtx.sampleRate / 2;
+  const binHz = nyquist / bufLen;
+  const bassEnd   = Math.min(Math.floor(300 / binHz), bufLen);
+  const midEnd    = Math.min(Math.floor(2000 / binHz), bufLen);
+
+  const sensitivity = parseFloat(document.getElementById('musicSensitivity').value);
+  const maxAngle    = parseFloat(document.getElementById('musicMaxAngle').value);
+
+  let bass = 0, mid = 0, treble = 0;
+  for (let i = 1; i < bassEnd; i++) bass += freqData[i];
+  bass = bassEnd > 1 ? (bass / (bassEnd - 1)) / 255.0 : 0;
+
+  for (let i = bassEnd; i < midEnd; i++) mid += freqData[i];
+  mid = midEnd > bassEnd ? (mid / (midEnd - bassEnd)) / 255.0 : 0;
+
+  for (let i = midEnd; i < bufLen; i++) treble += freqData[i];
+  treble = bufLen > midEnd ? (treble / (bufLen - midEnd)) / 255.0 : 0;
+
+  // Apply sensitivity & clamp
+  bass    = Math.min(bass * sensitivity, 1.0);
+  mid     = Math.min(mid * sensitivity, 1.0);
+  treble  = Math.min(treble * sensitivity, 1.0);
+
+  // Extra smoothing for fluid motion (exponential moving average)
+  const alpha = 0.35;
+  smoothBass   = smoothBass   + alpha * (bass - smoothBass);
+  smoothMid    = smoothMid    + alpha * (mid - smoothMid);
+  smoothTreble = smoothTreble + alpha * (treble - smoothTreble);
+
+  // Map to motor angles
+  const angle1 = Math.round(smoothBass * maxAngle);
+  const angle2 = Math.round(smoothMid * maxAngle);
+  const angle3 = Math.round(smoothTreble * maxAngle);
+
+  // Update band readouts
+  document.getElementById('bandBass').textContent   = angle1 + '\u00B0';
+  document.getElementById('bandMid').textContent    = angle2 + '\u00B0';
+  document.getElementById('bandTreble').textContent = angle3 + '\u00B0';
+
+  // Throttled motor command
+  const now = performance.now();
+  if (now - lastMusicSend > MUSIC_SEND_INTERVAL) {
+    lastMusicSend = now;
+    post('/api/move', { d1: angle1, d2: angle2, d3: angle3 });
+  }
+}
+
+function drawMusicVis(dataArray, bufferLength) {
+  const canvas = document.getElementById('musicCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width  = w * dpr;
+    canvas.height = h * dpr;
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const nyquist = audioCtx.sampleRate / 2;
+  const binHz = nyquist / bufferLength;
+  const bassEnd = Math.min(Math.floor(300 / binHz), bufferLength);
+  const midEnd  = Math.min(Math.floor(2000 / binHz), bufferLength);
+
+  const barW = Math.max(w / bufferLength, 1);
+
+  for (let i = 0; i < bufferLength; i++) {
+    const barH = (dataArray[i] / 255) * h;
+    if (i < bassEnd)       ctx.fillStyle = 'rgba(248,113,113,0.85)';
+    else if (i < midEnd)   ctx.fillStyle = 'rgba(250,204,21,0.85)';
+    else                   ctx.fillStyle = 'rgba(74,222,128,0.85)';
+
+    ctx.fillRect(i * barW, h - barH, Math.max(barW - 1, 1), barH);
+  }
+}
+
+// ---- Init ----
+refreshPorts();
+setInterval(pollState, 250);
+setInterval(pollLog, 500);
+</script>
+
+</body>
+</html>
