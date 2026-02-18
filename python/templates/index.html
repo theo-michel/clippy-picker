@@ -472,6 +472,233 @@ body {
   font-size: .82rem;
   color: var(--text-dim);
 }
+
+/* ================================================================== */
+/*  Connection Bars (split topbar into two rows)                       */
+/* ================================================================== */
+.conn-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 24px;
+}
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.conn-row-label {
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-dim);
+  min-width: 44px;
+}
+.conn-row select, .conn-row input[type="text"] {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: .82rem;
+  font-family: var(--mono);
+  outline: none;
+}
+.conn-row select:focus { border-color: var(--accent); }
+.arm-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  transition: background .3s;
+  flex-shrink: 0;
+}
+.arm-status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* ================================================================== */
+/*  Arm Control                                                        */
+/* ================================================================== */
+.arm-section {
+  grid-column: 1 / -1;
+}
+.arm-global-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.servo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+.servo-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color .25s, box-shadow .25s;
+}
+.servo-card.torque-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 4px 20px var(--accent-glow);
+}
+.servo-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.servo-id-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: .9rem;
+  margin-right: 10px;
+}
+.servo-name {
+  font-weight: 600;
+  font-size: .88rem;
+}
+.servo-meta {
+  font-size: .72rem;
+  color: var(--text-dim);
+}
+/* Torque toggle */
+.toggle-wrap { display: flex; align-items: center; gap: 8px; }
+.toggle-label { font-size: .72rem; color: var(--text-dim); }
+.toggle { position: relative; width: 38px; height: 20px; cursor: pointer; }
+.toggle input { display: none; }
+.toggle-track {
+  display: block; width: 38px; height: 20px;
+  background: var(--bg-hover); border: 1px solid var(--border);
+  border-radius: 100px; transition: all .2s;
+}
+.toggle input:checked + .toggle-track {
+  background: var(--green); border-color: var(--green);
+  box-shadow: 0 0 6px rgba(74,222,128,.3);
+}
+.toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  background: #fff; border-radius: 50%;
+  transition: transform .2s;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.toggle input:checked ~ .toggle-thumb { transform: translateX(18px); }
+
+/* Dial */
+.servo-dial-wrap { display: flex; justify-content: center; margin-bottom: 12px; }
+
+/* Servo slider row */
+.servo-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.servo-slider-row label {
+  font-size: .72rem;
+  color: var(--text-dim);
+  min-width: 28px;
+}
+.servo-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+.servo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+.servo-slider::-moz-range-thumb {
+  width: 18px; height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+.servo-num-input {
+  width: 56px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .82rem;
+  text-align: center;
+  padding: 4px;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.servo-num-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.servo-num-input:focus { border-color: var(--accent); }
+
+/* Quick preset buttons */
+.servo-quick-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.servo-quick-btn {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: .72rem;
+  font-weight: 600;
+  padding: 5px 2px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  font-family: var(--font);
+}
+.servo-quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Present position readout */
+.servo-present {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.servo-present-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-dim);
+}
+.servo-present-val {
+  font-size: 1.2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+}
+.servo-present-deg {
+  font-size: .75rem;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
 </style>
 </head>
 <body>
@@ -484,16 +711,33 @@ body {
     <div class="status-dot" id="statusDot"></div>
     <span class="status-label" id="statusLabel">Disconnected</span>
   </div>
-  <div class="conn-bar">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button class="btn" onclick="refreshPorts()" style="font-size:.78rem;">Refresh Ports</button>
+  </div>
+</header>
+
+<!-- ========================== CONNECTION BARS ========================== -->
+<div class="conn-bars">
+  <div class="conn-row">
+    <span class="conn-row-label">Delta</span>
     <select id="portSelect">
       <option value="">-- select port --</option>
     </select>
-    <button class="btn btn-green" id="btnConnect" onclick="connect()">Connect</button>
-    <button class="btn btn-orange" id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
-    <button class="btn" onclick="connect(true)">Simulation</button>
-    <button class="btn" onclick="refreshPorts()">Refresh</button>
+    <button class="btn btn-green" id="btnConnect" onclick="connect()" style="padding:5px 12px;font-size:.8rem;">Connect</button>
+    <button class="btn btn-orange" id="btnDisconnect" onclick="disconnect()" disabled style="padding:5px 12px;font-size:.8rem;">Disconnect</button>
+    <button class="btn" onclick="connect(true)" style="padding:5px 12px;font-size:.8rem;">Sim</button>
   </div>
-</header>
+  <div class="conn-row">
+    <span class="conn-row-label">Arm</span>
+    <select id="armPortSelect">
+      <option value="">-- select port --</option>
+    </select>
+    <button class="btn btn-green" id="btnArmConnect" onclick="armConnect()" style="padding:5px 12px;font-size:.8rem;">Connect</button>
+    <button class="btn btn-orange" id="btnArmDisconnect" onclick="armDisconnect()" disabled style="padding:5px 12px;font-size:.8rem;">Disconnect</button>
+    <div class="arm-status-dot" id="armStatusDot"></div>
+    <span class="status-label" id="armStatusLabel" style="font-size:.78rem;">Disconnected</span>
+  </div>
+</div>
 
 <!-- ========================== MAIN GRID ========================== -->
 <main class="main">
@@ -641,6 +885,17 @@ body {
     </div>
   </div>
 
+  <!-- ---- Arm Control ---- -->
+  <div class="card arm-section">
+    <div class="card-title">Arm Control (Dynamixel XL330)</div>
+    <div class="arm-global-bar">
+      <button class="btn btn-accent" onclick="armCenterAll()">All to Center</button>
+      <button class="btn btn-green" onclick="armTorqueAll(true)">Torque ON (all)</button>
+      <button class="btn" onclick="armTorqueAll(false)">Torque OFF (all)</button>
+    </div>
+    <div class="servo-grid" id="armGrid"></div>
+  </div>
+
   <!-- ---- Command Log ---- -->
   <div class="card log-panel">
     <div class="card-title">Command Log</div>
@@ -668,16 +923,19 @@ async function refreshPorts() {
   try {
     const res = await fetch(`${API}/api/ports`);
     const ports = await res.json();
-    const sel = document.getElementById('portSelect');
-    const prev = sel.value;
-    sel.innerHTML = '<option value="">-- select port --</option>';
-    ports.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.device;
-      opt.textContent = `${p.device}  (${p.description})`;
-      sel.appendChild(opt);
+    // Populate both Delta and Arm dropdowns
+    ['portSelect', 'armPortSelect'].forEach(selId => {
+      const sel = document.getElementById(selId);
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">-- select port --</option>';
+      ports.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.device;
+        opt.textContent = `${p.device}  (${p.description})`;
+        sel.appendChild(opt);
+      });
+      if (prev) sel.value = prev;
     });
-    if (prev) sel.value = prev;
   } catch(e) {
     console.error('Failed to list ports', e);
   }
@@ -828,6 +1086,48 @@ async function pollState() {
       document.getElementById('accelSlider').value = s.accel_rpm_s;
       document.getElementById('accelVal').textContent = s.accel_rpm_s + ' RPM/s';
     }
+
+    // ---- Arm state ----
+    const armDot = document.getElementById('armStatusDot');
+    const armLbl = document.getElementById('armStatusLabel');
+    if (s.arm_connected) {
+      armDot.className = 'arm-status-dot connected';
+      armLbl.textContent = s.arm_port || 'Connected';
+    } else {
+      armDot.className = 'arm-status-dot';
+      armLbl.textContent = 'Disconnected';
+    }
+    updateArmConnUI(s.arm_connected);
+
+    ARM_IDS.forEach(id => {
+      const sid = String(id);
+      // Present position
+      const pos = s.arm_positions?.[sid];
+      if (pos !== undefined) {
+        const presEl = document.getElementById(`arm-pres-${id}`);
+        const degEl = document.getElementById(`arm-deg-${id}`);
+        if (presEl) presEl.textContent = pos;
+        if (degEl) degEl.textContent = ((pos / 4095) * 360).toFixed(1) + '\u00B0';
+        armUpdateDial(id, pos);
+      }
+      // Goal — only update if user isn't actively touching slider/input
+      const goal = s.arm_goal_positions?.[sid];
+      const slider = document.getElementById(`arm-slider-${id}`);
+      const num = document.getElementById(`arm-num-${id}`);
+      if (goal !== undefined &&
+          document.activeElement !== slider &&
+          document.activeElement !== num) {
+        slider.value = goal;
+        num.value = goal;
+      }
+      // Torque
+      const torque = s.arm_torques?.[sid];
+      if (torque !== undefined) {
+        document.getElementById(`arm-torq-${id}`).checked = torque;
+        document.getElementById(`arm-card-${id}`)
+          .classList.toggle('torque-on', torque);
+      }
+    });
   } catch(e) { /* server down */ }
 }
 
@@ -1039,6 +1339,156 @@ function drawMusicVis(dataArray, bufferLength) {
 
     ctx.fillRect(i * barW, h - barH, Math.max(barW - 1, 1), barH);
   }
+}
+
+// ---- Arm Control ----
+const ARM_IDS = [4, 5, 6];
+const ARM_NAMES = {4: 'Joint 4', 5: 'Joint 5', 6: 'Claw'};
+const ARM_ARC_LEN = Math.PI * 75; // semicircle arc length for SVG dial
+let armTimers = {};
+
+function buildArmCards() {
+  const grid = document.getElementById('armGrid');
+  grid.innerHTML = ARM_IDS.map(id => `
+    <div class="servo-card" id="arm-card-${id}">
+      <div class="servo-card-header">
+        <div style="display:flex;align-items:center">
+          <div class="servo-id-badge">${id}</div>
+          <div>
+            <div class="servo-name">${ARM_NAMES[id]}</div>
+            <div class="servo-meta">XL330 &middot; ID ${id}</div>
+          </div>
+        </div>
+        <div class="toggle-wrap">
+          <span class="toggle-label">Torque</span>
+          <label class="toggle">
+            <input type="checkbox" id="arm-torq-${id}" onchange="armSetTorque(${id}, this.checked)">
+            <span class="toggle-track"></span>
+            <span class="toggle-thumb"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="servo-dial-wrap">
+        <svg width="180" height="100" viewBox="0 0 180 100" overflow="visible">
+          <path d="M 15 90 A 75 75 0 0 1 165 90"
+            fill="none" stroke="var(--border)" stroke-width="10" stroke-linecap="round"/>
+          <path id="arm-arc-${id}"
+            d="M 15 90 A 75 75 0 0 1 165 90"
+            fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round"
+            stroke-dasharray="0 236"/>
+          <line id="arm-needle-${id}"
+            x1="90" y1="90" x2="90" y2="20"
+            stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"
+            transform="rotate(-90,90,90)"/>
+          <circle cx="90" cy="90" r="6" fill="var(--accent)"/>
+          <circle cx="90" cy="90" r="3" fill="var(--bg-input)"/>
+          <text x="10"  y="98" fill="var(--text-dim)" font-size="10" text-anchor="middle">0</text>
+          <text x="90"  y="14" fill="var(--text-dim)" font-size="10" text-anchor="middle">2048</text>
+          <text x="170" y="98" fill="var(--text-dim)" font-size="10" text-anchor="middle">4095</text>
+        </svg>
+      </div>
+
+      <div class="servo-slider-row">
+        <label>Goal</label>
+        <input type="range" class="servo-slider" id="arm-slider-${id}" min="0" max="4095" value="2048"
+          oninput="armOnSlide(${id}, this.value)"
+          onchange="armSendPos(${id}, this.value)">
+        <input type="number" class="servo-num-input" id="arm-num-${id}" value="2048" min="0" max="4095"
+          onchange="armOnNum(${id}, this.value)">
+      </div>
+
+      <div class="servo-quick-row">
+        <button class="servo-quick-btn" onclick="armSetGoal(${id},    0)">0</button>
+        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 1024)">25%</button>
+        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 2048)">Center</button>
+        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 3072)">75%</button>
+        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 4095)">4095</button>
+      </div>
+
+      <div class="servo-present">
+        <div><div class="servo-present-label">Present Position</div></div>
+        <div>
+          <span class="servo-present-val" id="arm-pres-${id}">&mdash;</span>
+          <span class="servo-present-deg" id="arm-deg-${id}"></span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+buildArmCards();
+
+function armUpdateDial(id, pos) {
+  const pct = pos / 4095;
+  const filled = pct * ARM_ARC_LEN;
+  const arc = document.getElementById(`arm-arc-${id}`);
+  if (arc) arc.setAttribute('stroke-dasharray', `${filled.toFixed(1)} ${(ARM_ARC_LEN - filled).toFixed(1)}`);
+  const angle = -90 + pct * 180;
+  const needle = document.getElementById(`arm-needle-${id}`);
+  if (needle) needle.setAttribute('transform', `rotate(${angle.toFixed(2)},90,90)`);
+}
+
+function armOnSlide(id, v) {
+  document.getElementById(`arm-num-${id}`).value = v;
+  armUpdateDial(id, +v);
+  clearTimeout(armTimers[id]);
+  armTimers[id] = setTimeout(() => armSendPos(id, v), 40);
+}
+
+function armOnNum(id, v) {
+  const val = Math.max(0, Math.min(4095, +v || 0));
+  document.getElementById(`arm-slider-${id}`).value = val;
+  document.getElementById(`arm-num-${id}`).value = val;
+  armUpdateDial(id, val);
+  armSendPos(id, val);
+}
+
+function armSetGoal(id, v) {
+  document.getElementById(`arm-slider-${id}`).value = v;
+  document.getElementById(`arm-num-${id}`).value = v;
+  armUpdateDial(id, v);
+  armSendPos(id, v);
+}
+
+function armSendPos(id, v) {
+  post('/api/arm/servo/' + id + '/position', { value: +v });
+}
+
+function armSetTorque(id, enabled) {
+  post('/api/arm/servo/' + id + '/torque', { enabled });
+}
+
+function armCenterAll() {
+  post('/api/arm/center');
+}
+
+function armTorqueAll(enabled) {
+  ARM_IDS.forEach(id => post('/api/arm/servo/' + id + '/torque', { enabled }));
+}
+
+async function armConnect() {
+  const port = document.getElementById('armPortSelect').value;
+  if (!port) { alert('Select an arm port first.'); return; }
+  try {
+    const res = await fetch(`${API}/api/arm/connect`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ port })
+    });
+    const data = await res.json();
+    if (!data.ok) alert(data.message);
+    updateArmConnUI(data.ok);
+  } catch(e) { alert('Arm connection failed: ' + e); }
+}
+
+async function armDisconnect() {
+  await fetch(`${API}/api/arm/disconnect`, {method: 'POST'});
+  updateArmConnUI(false);
+}
+
+function updateArmConnUI(connected) {
+  document.getElementById('btnArmConnect').disabled = connected;
+  document.getElementById('btnArmDisconnect').disabled = !connected;
 }
 
 // ---- Init ----

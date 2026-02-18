@@ -489,7 +489,7 @@ body {
         </div>
         <div class="xyz-row">
           <span class="xyz-label lz">Z</span>
-          <input type="range" class="xyz-slider sz" id="sliderZ" min="-400" max="-100" step="1" value="-250"
+          <input type="range" class="xyz-slider sz" id="sliderZ" min="-400" max="0" step="1" value="-250"
                  oninput="onSlider('z', this.value)">
           <input type="number" class="xyz-input" id="inputZ" value="-250" step="1"
                  onchange="onInput('z', this.value)">
@@ -583,7 +583,7 @@ let geo = { L: 150, l: 271, Fd: 36.7, Ed: 80 };
 const BOUNDS = {
   x: [-150, 150],
   y: [-150, 150],
-  z: [-400, -100],
+  z: [-400, 0],
 };
 
 // Grid step (mm) — one line per this many mm
@@ -597,17 +597,12 @@ const SQRT3 = Math.sqrt(3);
 function solveArm(L, l, Fd, Ed, x, y, z) {
   const d = y - Ed + Fd;
   const W2 = z * z + d * d;
-  if (W2 < 1e-12) return null;
-  const W = Math.sqrt(W2);
-  const sinAlpha = d / W;
-  if (sinAlpha < -1 || sinAlpha > 1) return null;
-  const alpha = Math.asin(sinAlpha) * 180 / Math.PI;
+  const W = Math.sqrt(W2) || 1e-6;
+  const alpha = Math.asin(d / W) * 180 / Math.PI;
 
   const A2 = l * l - x * x;
-  if (A2 < 0) return null;
   const cosOmega = (W2 + L * L - A2) / (2 * L * W);
-  if (cosOmega < -1 || cosOmega > 1) return null;
-  const omega = Math.acos(cosOmega) * 180 / Math.PI;
+  const omega = Math.acos(Math.max(-1, Math.min(1, cosOmega))) * 180 / Math.PI;
 
   return 90 + alpha - omega;
 }

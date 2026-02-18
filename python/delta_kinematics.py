@@ -154,25 +154,13 @@ class DeltaKinematics:
         # Left triangle → α
         d = y - Ed + Fd
         W2 = z * z + d * d
-        if W2 < 1e-12:
-            raise ValueError("Degenerate geometry (W ≈ 0)")
-        W = math.sqrt(W2)
-        alpha_deg = math.degrees(math.asin(d / W))
+        W = math.sqrt(W2) if W2 > 1e-12 else 1e-6
+        alpha_deg = math.degrees(math.asin(max(-1.0, min(1.0, d / W))))
 
         # Right triangle → ω  (law of cosines)
         A2 = l * l - x * x
-        if A2 < 0.0:
-            raise ValueError(
-                f"Target ({x}, {y}, {z}) is unreachable "
-                f"(lower arm too short for x offset)"
-            )
-
         cos_omega = (W2 + L * L - A2) / (2.0 * L * W)
-        if cos_omega < -1.0 or cos_omega > 1.0:
-            raise ValueError(
-                f"Target ({x}, {y}, {z}) is unreachable "
-                f"(cos_omega = {cos_omega:.6f})"
-            )
+        cos_omega = max(-1.0, min(1.0, cos_omega))
         omega_deg = math.degrees(math.acos(cos_omega))
 
         theta_deg = 90.0 + alpha_deg - omega_deg

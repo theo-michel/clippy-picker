@@ -25,6 +25,7 @@ import serial.tools.list_ports
 
 from delta_robot import DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
+from dynamixel_arm import DynamixelArm, DynamixelArmError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +42,9 @@ app = Flask(__name__)
 robot: Optional[DeltaRobot] = None
 robot_lock = threading.Lock()
 
+arm: Optional[DynamixelArm] = None
+arm_lock = threading.Lock()
+
 # Cached state (updated by background thread)
 state = {
     "connected": False,
@@ -50,6 +54,12 @@ state = {
     "speed_rpm": 60.0,
     "accel_rpm_s": 120.0,
     "enabled": True,
+    # Arm (Dynamixel) state
+    "arm_connected": False,
+    "arm_port": None,
+    "arm_positions": {"4": 2048, "5": 2048, "6": 2048},
+    "arm_goal_positions": {"4": 2048, "5": 2048, "6": 2048},
+    "arm_torques": {"4": False, "5": False, "6": False},
 }
 
 # Command log (ring buffer, newest first)
@@ -209,6 +219,27 @@ def status_poller():
 
 poller_thread = threading.Thread(target=status_poller, daemon=True)
 poller_thread.start()
+
+
+def arm_poller():
+    """Periodically read arm servo positions."""
+    while True:
+        time.sleep(0.08)
+        with arm_lock:
+            if arm is None:
+                state["arm_connected"] = False
+                continue
+            try:
+                positions = arm.get_all_positions()
+                for sid, pos in positions.items():
+                    state["arm_positions"][str(sid)] = pos
+                state["arm_connected"] = True
+            except Exception:
+                state["arm_connected"] = False
+
+
+arm_poller_thread = threading.Thread(target=arm_poller, daemon=True)
+arm_poller_thread.start()
 
 
 # ====================================================================== #
@@ -465,6 +496,102 @@ def api_ik_config():
 
 
 # ====================================================================== #
+#  Routes — Arm (Dynamixel) API
+# ====================================================================== #
+
+
+@app.route("/api/arm/connect", methods=["POST"])
+def api_arm_connect():
+    global arm
+    data = request.json or {}
+    port = data.get("port", "")
+
+    with arm_lock:
+        if arm is not None:
+            try:
+                arm.close()
+            except Exception:
+                pass
+            arm = None
+
+        try:
+            arm = DynamixelArm(port)
+            state["arm_port"] = port
+            state["arm_connected"] = True
+            # Read initial torque states
+            for sid in DynamixelArm.SERVO_IDS:
+                state["arm_torques"][str(sid)] = arm.get_torque(sid)
+            log_command("ARM CONNECT", f"Arm connected to {port}", ok=True)
+            return jsonify({"ok": True, "message": f"Arm connected to {port}"})
+        except Exception as e:
+            arm = None
+            state["arm_connected"] = False
+            return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/api/arm/disconnect", methods=["POST"])
+def api_arm_disconnect():
+    global arm
+    with arm_lock:
+        if arm is not None:
+            try:
+                arm.close()
+            except Exception:
+                pass
+            arm = None
+        state["arm_connected"] = False
+        state["arm_port"] = None
+        log_command("ARM DISCONNECT", "Arm disconnected", ok=True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/arm/servo/<int:servo_id>/position", methods=["POST"])
+def api_arm_set_position(servo_id):
+    data = request.json or {}
+    value = int(data.get("value", 2048))
+    with arm_lock:
+        if arm is None:
+            return jsonify({"ok": False, "message": "Arm not connected"}), 400
+        try:
+            arm.set_position(servo_id, value)
+            state["arm_goal_positions"][str(servo_id)] = max(0, min(4095, value))
+            return jsonify({"ok": True})
+        except DynamixelArmError as e:
+            return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/api/arm/servo/<int:servo_id>/torque", methods=["POST"])
+def api_arm_set_torque(servo_id):
+    data = request.json or {}
+    enabled = bool(data.get("enabled", False))
+    with arm_lock:
+        if arm is None:
+            return jsonify({"ok": False, "message": "Arm not connected"}), 400
+        try:
+            arm.set_torque(servo_id, enabled)
+            state["arm_torques"][str(servo_id)] = enabled
+            return jsonify({"ok": True})
+        except DynamixelArmError as e:
+            return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/api/arm/center", methods=["POST"])
+def api_arm_center():
+    with arm_lock:
+        if arm is None:
+            return jsonify({"ok": False, "message": "Arm not connected"}), 400
+        try:
+            arm.center_all()
+            for sid in DynamixelArm.SERVO_IDS:
+                state["arm_torques"][str(sid)] = True
+                state["arm_goal_positions"][str(sid)] = 2048
+            log_command("ARM CENTER", "All arm servos centered", ok=True)
+            return jsonify({"ok": True})
+        except DynamixelArmError as e:
+            return jsonify({"ok": False, "message": str(e)}), 500
+
+
+# ====================================================================== #
 #  Main
 # ====================================================================== #
 
@@ -478,9 +605,12 @@ def main():
     parser.add_argument(
         "--sim", action="store_true", help="Simulation mode (no Arduino)"
     )
+    parser.add_argument(
+        "--arm-port", type=str, default=None, help="Dynamixel arm serial port"
+    )
     args = parser.parse_args()
 
-    global robot
+    global robot, arm
 
     # Auto-connect if port given or sim mode
     if args.sim:
@@ -496,6 +626,19 @@ def main():
         except Exception as e:
             log.error("Could not connect to %s: %s", args.port, e)
             log.info("Start without connection — use the web UI to connect.")
+
+    # Auto-connect arm if port given
+    if args.arm_port:
+        try:
+            arm = DynamixelArm(args.arm_port)
+            state["arm_connected"] = True
+            state["arm_port"] = args.arm_port
+            for sid in DynamixelArm.SERVO_IDS:
+                state["arm_torques"][str(sid)] = arm.get_torque(sid)
+            log.info("Arm connected on %s", args.arm_port)
+        except Exception as e:
+            log.error("Could not connect arm to %s: %s", args.arm_port, e)
+            log.info("Start without arm — use the web UI to connect.")
 
     log.info("Starting web server at http://%s:%d", args.host, args.web_port)
     app.run(host=args.host, port=args.web_port, debug=False, threaded=True)
