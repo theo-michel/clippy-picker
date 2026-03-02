@@ -17,6 +17,7 @@ Detla/
 
 ## Hardware
 
+
 | Component  | Spec                                                    |
 | ---------- | ------------------------------------------------------- |
 | Motors     | 3x 17HS19-2004S1 — NEMA 17, 200 steps/rev, 2 A          |
@@ -24,9 +25,11 @@ Detla/
 | Controller | Arduino Uno / Mega (any board with enough digital pins) |
 | Power      | 12–24 V supply rated for at least 6 A (3 motors x 2 A)  |
 
+
 ## Wiring
 
 ### DRV8825 → Arduino Pin Map
+
 
 | Signal | Motor 1 | Motor 2 | Motor 3 | Notes                          |
 | ------ | ------- | ------- | ------- | ------------------------------ |
@@ -35,6 +38,7 @@ Detla/
 | EN     | D8      | D8      | D8      | All tied together (active LOW) |
 | RESET  | —       | —       | —       | Tie to SLEEP (pull HIGH)       |
 | SLEEP  | —       | —       | —       | Tie to RESET (pull HIGH)       |
+
 
 ### DRV8825 → Power & Motor
 
@@ -61,6 +65,7 @@ For the 17HS19-2004S1 at 2 A: **Vref ≈ 1.0 V** (measure between the pot wiper 
 
 Leave all three LOW (or unconnected) for full-step mode. Change the `MICROSTEPS` constant in the Arduino sketch to match if you change these.
 
+
 | M0  | M1  | M2  | Resolution |
 | --- | --- | --- | ---------- |
 | L   | L   | L   | Full step  |
@@ -70,12 +75,13 @@ Leave all three LOW (or unconnected) for full-step mode. Change the `MICROSTEPS`
 | L   | L   | H   | 1/16 step  |
 | H   | H   | H   | 1/32 step  |
 
+
 ## Software Setup
 
 ### Arduino
 
 1. Install the **AccelStepper** library:
-   - Arduino IDE → Sketch → Include Library → Manage Libraries → search "AccelStepper" → Install
+  - Arduino IDE → Sketch → Include Library → Manage Libraries → search "AccelStepper" → Install
 2. Open `arduino/delta_robot_controller/delta_robot_controller.ino`
 3. Verify pin definitions match your wiring
 4. Upload to the board
@@ -116,6 +122,7 @@ with DeltaRobot("/dev/tty.usbmodem14101") as robot:
 
 ## Serial Command Reference
 
+
 | Command                  | Description                                  |
 | ------------------------ | -------------------------------------------- |
 | `M d1 d2 d3`             | Move all motors to absolute degree positions |
@@ -131,8 +138,10 @@ with DeltaRobot("/dev/tty.usbmodem14101") as robot:
 | `STATUS`                 | Report MOVING or IDLE                        |
 | `ZERO`                   | Set current position as zero                 |
 
+
 ## Next Steps
 
 - Add limit/homing switches for absolute position reference
 - Implement inverse kinematics (XYZ → motor angles) on the Python side
 - Add a GUI or joystick input
+
