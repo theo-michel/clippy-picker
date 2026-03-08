@@ -7,4 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "dynamixel-sdk>=4.0.3",
     "flask>=3.1.2",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.2",
+    "pyserial>=3.5",
 ]
