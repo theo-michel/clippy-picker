@@ -1,17 +1,22 @@
 """
 Delta Robot Inverse Kinematics
 
-Two methods for computing inverse kinematics (Cartesian → joint angles):
-
-  1. Classic circle-intersection approach (quadratic solve)
-  2. Two-triangle approach (simpler trigonometry)
-
-Both produce identical results; method 2 is shorter and avoids the
-quadratic-formula bookkeeping.
+Classic circle-intersection approach: project arm geometry onto the YZ plane,
+solve circle-circle intersection (quadratic in elbow position), then compute
+joint angle from elbow.
 
 Reference frame:
   - Origin at the centre of the base platform.
   - Z axis points downward (end-effector workspace is at negative z).
+
+Joint angle convention (kinematic space):
+  - θ = 0° means the upper arm is **horizontal** (elbow in the base plane, z = 0).
+  - θ > 0° means the arm is tilted **down** from horizontal; θ < 0° means **up**.
+  So cos(θ) and sin(θ) in the formulas depend on this numeric value; the kinematics
+  does care what number you pass. If your physical "home" is e.g. 20° above
+  horizontal, that pose corresponds to θ = -20° in this convention. The firmware
+  may report 0 at that pose (after ZERO); then use an offset when converting
+  between firmware and kinematic angles (see coordinates.DELTA_KINEMATIC_AT_FIRMWARE_ZERO).
 
 Robot geometry parameters (all in the same unit, e.g. mm):
   upper_arm — shoulder-to-elbow length  (L)
@@ -22,7 +27,7 @@ Robot geometry parameters (all in the same unit, e.g. mm):
 Usage:
     from delta_kinematics import DeltaKinematics
 
-    dk = DeltaKinematics(upper_arm=150, lower_arm=271, Fd=36.7, Ed=80)
+    dk = DeltaKinematics(upper_arm=150, lower_arm=268, Fd=82.5, Ed=27.3)
     angles = dk.inverse(x=0, y=0, z=-250)
     print(angles)  # (θ1, θ2, θ3) in degrees
 """
@@ -50,19 +55,12 @@ class DeltaKinematics:
     #  Public API
     # ------------------------------------------------------------------ #
 
-    def inverse(
-        self,
-        x: float,
-        y: float,
-        z: float,
-        method: str = "triangles",
-    ) -> Tuple[float, float, float]:
+    def inverse(self, x: float, y: float, z: float) -> Tuple[float, float, float]:
         """
         Compute the three joint angles for a desired end-effector position.
 
         Args:
             x, y, z: Target position in the robot's reference frame.
-            method:  ``"triangles"`` (default, recommended) or ``"classic"``.
 
         Returns:
             (theta1, theta2, theta3) in **degrees**.
@@ -70,29 +68,125 @@ class DeltaKinematics:
         Raises:
             ValueError: If the target is unreachable.
         """
-        if method == "classic":
-            solve = self._solve_arm_classic
-        elif method == "triangles":
-            solve = self._solve_arm_triangles
-        else:
-            raise ValueError(f"Unknown method {method!r}; use 'classic' or 'triangles'")
+        t1 = self._solve_arm_classic(x, y, z)
 
-        # Arm 1 — no rotation
-        t1 = solve(x, y, z)
-
-        # Arm 2 — rotate (x, y) by +120°
         x2, y2 = self._rotate_120(x, y)
-        t2 = solve(x2, y2, z)
-
-        # Arm 3 — rotate (x, y) by +240°
+        t2 = self._solve_arm_classic(x2, y2, z)
         x3, y3 = self._rotate_240(x, y)
-        t3 = solve(x3, y3, z)
+        t3 = self._solve_arm_classic(x3, y3, z)
 
         return (t1, t2, t3)
 
-    # ------------------------------------------------------------------ #
-    #  Method 1 — Classic circle-intersection (quadratic)
-    # ------------------------------------------------------------------ #
+    def forward(
+        self,
+        theta1_deg: float,
+        theta2_deg: float,
+        theta3_deg: float,
+    ) -> Tuple[float, float, float]:
+        """
+        Compute end-effector (x, y, z) from joint angles (forward kinematics).
+
+        Uses the same frame as inverse(): origin at base centre, Z downward.
+        The solution with z < 0 (below the base) is returned.
+
+        Args:
+            theta1_deg, theta2_deg, theta3_deg: Joint angles in **degrees**.
+
+        Returns:
+            (x, y, z) in the same units as the robot geometry (e.g. mm).
+
+        Raises:
+            ValueError: If the configuration is singular or unreachable.
+        """
+        L = self.upper_arm
+        l = self.lower_arm
+        Fd = self.Fd
+        sqrt3 = self._sqrt3
+
+        def rad(d: float) -> float:
+            return math.radians(d)
+
+        t1, t2, t3 = rad(theta1_deg), rad(theta2_deg), rad(theta3_deg)
+
+        # Elbow positions consistent with IK: for arm 1, elbow = (0, Py, Pz) with
+        # Py = -Fd - L*cos(θ), Pz = -L*sin(θ) (classic method convention)
+        E1 = (
+            0.0,
+            -Fd - L * math.cos(t1),
+            -L * math.sin(t1),
+        )
+        # Arm 2 and 3: same (y, z) as arm 1 in their local frames; local y is at 120° / 240°
+        # So E2 = ( (Fd+L*cos(t2))*sqrt3/2, -(Fd+L*cos(t2))/2, -L*sin(t2) ), E3 = ( -(Fd+L*cos(t3))*sqrt3/2, -(Fd+L*cos(t3))/2, -L*sin(t3) )
+        c2, s2 = math.cos(t2), math.sin(t2)
+        c3, s3 = math.cos(t3), math.sin(t3)
+        E2 = (
+            (Fd + L * c2) * sqrt3 / 2.0,
+            -(Fd + L * c2) / 2.0,
+            -L * s2,
+        )
+        E3 = (
+            -(Fd + L * c3) * sqrt3 / 2.0,
+            -(Fd + L * c3) / 2.0,
+            -L * s3,
+        )
+
+        # P is the intersection of three spheres |P - Ei|^2 = l^2
+        # Subtract sphere 1 from 2 and 3 to get two linear equations in P
+        def dot(a: tuple, b: tuple) -> float:
+            return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+        def sq_norm(a: tuple) -> float:
+            return dot(a, a)
+
+        A = (E1[0] - E2[0], E1[1] - E2[1], E1[2] - E2[2])
+        B = (E1[0] - E3[0], E1[1] - E3[1], E1[2] - E3[2])
+        rhs_a = (sq_norm(E1) - sq_norm(E2)) / 2.0
+        rhs_b = (sq_norm(E1) - sq_norm(E3)) / 2.0
+
+        # Solve P.A = rhs_a, P.B = rhs_b. Express Px, Py in terms of Pz using
+        # the two linear equations (2x2 system in Px, Py when A and B have
+        # nonzero XY components).
+        ax, ay, az = A
+        bx, by, bz = B
+        det = ax * by - ay * bx
+        if abs(det) < 1e-12:
+            raise ValueError(
+                "Forward kinematics singular (elbows aligned or degenerate)"
+            )
+        # Px = (rhs_a*by - rhs_b*ay - Pz*(az*by - ay*bz)) / det
+        # Py = (rhs_b*ax - rhs_a*bx - Pz*(ax*bz - az*bx)) / det
+        kx = (az * by - ay * bz) / det
+        ky = (ax * bz - az * bx) / det
+        cx = (rhs_a * by - rhs_b * ay) / det
+        cy = (rhs_b * ax - rhs_a * bx) / det
+        # P = (cx - kx*Pz, cy - ky*Pz, Pz)
+        # |P - E1|^2 = l^2  =>  quadratic in Pz
+        ex, ey, ez = E1
+        px0 = cx - ex
+        py0 = cy - ey
+        qa = kx * kx + ky * ky + 1.0
+        qb = 2.0 * (px0 * kx + py0 * ky - ez)
+        qc = px0 * px0 + py0 * py0 + ez * ez - l * l
+        disc = qb * qb - 4.0 * qa * qc
+        if disc < 0.0:
+            raise ValueError(
+                "Forward kinematics: no intersection (invalid joint angles)"
+            )
+        sqrt_d = math.sqrt(disc)
+        pz1 = (-qb + sqrt_d) / (2.0 * qa)
+        pz2 = (-qb - sqrt_d) / (2.0 * qa)
+        # Choose the solution below the base (negative z)
+        if pz1 <= 0 and pz2 <= 0:
+            pz = max(pz1, pz2)
+        elif pz1 <= 0:
+            pz = pz1
+        elif pz2 <= 0:
+            pz = pz2
+        else:
+            pz = min(pz1, pz2)
+        px = cx - kx * pz
+        py = cy - ky * pz
+        return (px, py, pz)
 
     def _solve_arm_classic(self, x: float, y: float, z: float) -> float:
         """
@@ -136,37 +230,6 @@ class DeltaKinematics:
         return theta_deg
 
     # ------------------------------------------------------------------ #
-    #  Method 2 — Two-triangle approach
-    # ------------------------------------------------------------------ #
-
-    def _solve_arm_triangles(self, x: float, y: float, z: float) -> float:
-        """
-        Solve one arm's angle via the two-triangle decomposition.
-
-        Derives α from the left triangle (arcsin) and ω from the law
-        of cosines on the right triangle, then combines them.
-        """
-        L = self.upper_arm
-        l = self.lower_arm
-        Fd = self.Fd
-        Ed = self.Ed
-
-        # Left triangle → α
-        d = y - Ed + Fd
-        W2 = z * z + d * d
-        W = math.sqrt(W2) if W2 > 1e-12 else 1e-6
-        alpha_deg = math.degrees(math.asin(max(-1.0, min(1.0, d / W))))
-
-        # Right triangle → ω  (law of cosines)
-        A2 = l * l - x * x
-        cos_omega = (W2 + L * L - A2) / (2.0 * L * W)
-        cos_omega = max(-1.0, min(1.0, cos_omega))
-        omega_deg = math.degrees(math.acos(cos_omega))
-
-        theta_deg = 90.0 + alpha_deg - omega_deg
-        return theta_deg
-
-    # ------------------------------------------------------------------ #
     #  Rotation helpers (120° / 240° around Z)
     # ------------------------------------------------------------------ #
 
@@ -189,33 +252,8 @@ class DeltaKinematics:
         )
 
 
-# ====================================================================== #
-#  Quick sanity check
-# ====================================================================== #
-
 if __name__ == "__main__":
-    dk = DeltaKinematics(upper_arm=150, lower_arm=271, Fd=36.7, Ed=80)
-
-    test_points = [
-        (0.0, 0.0, -250.0),
-        (50.0, 0.0, -250.0),
-        (0.0, 50.0, -300.0),
-        (30.0, -30.0, -200.0),
-    ]
-
-    print(f"{'Point':>24s}   {'Classic':>36s}   {'Triangles':>36s}   {'Max Δ':>8s}")
-    print("-" * 114)
-
-    for x, y, z in test_points:
-        try:
-            classic = dk.inverse(x, y, z, method="classic")
-            triangles = dk.inverse(x, y, z, method="triangles")
-            max_diff = max(abs(a - b) for a, b in zip(classic, triangles))
-            print(
-                f"({x:6.2f}, {y:6.2f}, {z:6.2f})   "
-                f"({classic[0]:10.4f}, {classic[1]:10.4f}, {classic[2]:10.4f})   "
-                f"({triangles[0]:10.4f}, {triangles[1]:10.4f}, {triangles[2]:10.4f})   "
-                f"{max_diff:.2e}"
-            )
-        except ValueError as e:
-            print(f"({x:6.2f}, {y:6.2f}, {z:6.2f})   {e}")
+    dk = DeltaKinematics(upper_arm=150, lower_arm=268, Fd=82.5, Ed=27.3)
+    for x, y, z in [(0.0, 0.0, -250.0), (50.0, 0.0, -250.0)]:
+        angles = dk.inverse(x, y, z)
+        print(f"({x}, {y}, {z}) -> ({angles[0]:.4f}, {angles[1]:.4f}, {angles[2]:.4f})°")
