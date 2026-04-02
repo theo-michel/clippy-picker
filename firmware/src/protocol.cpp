@@ -53,6 +53,9 @@ void Protocol::dispatch() {
     else if (strcmp(tok, "GSPD")   == 0) _cmdGantrySpeed();
     else if (strcmp(tok, "GACC")   == 0) _cmdGantryAccel();
     else if (strcmp(tok, "HOME")   == 0) _cmdHome();
+    else if (strcmp(tok, "GANTRY_HOME") == 0) _cmdGantryHome();
+    else if (strcmp(tok, "DELTA_ENABLE")  == 0) _cmdDeltaEnable();
+    else if (strcmp(tok, "DELTA_DISABLE") == 0) _cmdDeltaDisable();
     else if (strcmp(tok, "STOP")   == 0) _cmdStop();
     else if (strcmp(tok, "ESTOP")  == 0) _cmdEstop();
     else if (strcmp(tok, "POS")    == 0) _cmdPos();
@@ -135,8 +138,11 @@ void Protocol::_cmdGantryAccel() {
     ok();
 }
 
-void Protocol::_cmdHome()  { motors.home();          ok(); }
-void Protocol::_cmdStop()  { motors.stop();          ok(); }
+void Protocol::_cmdHome()         { motors.home();             ok(); }
+void Protocol::_cmdGantryHome()   { motors.startGantryHoming(); ok(); }
+void Protocol::_cmdDeltaEnable()  { motors.enableDelta();       ok(); }
+void Protocol::_cmdDeltaDisable() { motors.disableDelta();      ok(); }
+void Protocol::_cmdStop()       { motors.stop();             ok(); }
 void Protocol::_cmdEstop() { motors.emergencyStop(); ok(); }
 void Protocol::_cmdZero()  { motors.setZero();       ok(); }
 void Protocol::_cmdPing()  { Serial.println("PONG"); }

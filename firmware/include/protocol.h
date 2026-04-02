@@ -47,6 +47,9 @@ private:
     void _cmdGantrySpeed();
     void _cmdGantryAccel();
     void _cmdHome();
+    void _cmdGantryHome();
+    void _cmdDeltaEnable();
+    void _cmdDeltaDisable();
     void _cmdStop();
     void _cmdEstop();
     void _cmdPos();

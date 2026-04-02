@@ -40,6 +40,15 @@ public:
     void emergencyStop();   // instant halt, position preserved
     void setZero();         // declare current position as origin
     void home();            // move all axes to zero
+
+    // Delta motor enable/disable (DRV8825 EN pin)
+    void enableDelta();
+    void disableDelta();
+    bool isDeltaEnabled() const;
+
+    // Gantry homing: move toward endstop until pressed, set position 0, back off.
+    void startGantryHoming();
+    bool isGantryHoming() const;
 };
 
 extern Motors motors;
