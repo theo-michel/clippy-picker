@@ -24,9 +24,9 @@ from delta_kinematics import DeltaKinematics
 
 # Default robot geometry (mm) — must match your physical robot
 DEFAULT_UPPER_ARM = 150.0
-DEFAULT_LOWER_ARM = 271.0
-DEFAULT_FD = 36.7
-DEFAULT_ED = 80.0
+DEFAULT_LOWER_ARM = 268.0
+DEFAULT_FD = 82.5
+DEFAULT_ED = 27.3
 
 # Default working height (mm, Z points downward so workspace is negative)
 DEFAULT_Z = -250.0
