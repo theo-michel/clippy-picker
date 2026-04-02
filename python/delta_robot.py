@@ -1,276 +1,511 @@
 """
-Delta Robot Controller — Python side
-Communicates with the Arduino over serial (115200 baud).
+Delta Robot Controller — serial interface to the ESP32 firmware.
 
-Requirements:
-    pip install pyserial
+Communicates over USB serial at 1 Mbaud using a text-based protocol.
+Manages 3 delta-arm stepper motors, 1 gantry axis, and 1 Dynamixel
+XL330 gripper — all driven by the ESP32 firmware.
 
-Usage:
+Supports both joint-space and Cartesian-space motion.  Cartesian
+commands run inverse kinematics on the host and send joint angles
+to the firmware.
+
+Usage::
+
     from delta_robot import DeltaRobot
 
-    robot = DeltaRobot("/dev/tty.usbmodem14101")  # macOS example
-    robot.move_to(45, 45, 45)
-    robot.wait_until_done()
-    robot.home()
-    robot.wait_until_done()
-    robot.close()
+    with DeltaRobot("/dev/tty.usbserial-0001") as robot:
+        # Joint-space
+        robot.move_delta(10.0, 10.0, 10.0)
+        robot.wait_until_done()
+
+        # Cartesian — delta only
+        robot.move_to_xyz(50, 0, -200)
+        robot.wait_until_done()
+
+        # Cartesian — gantry + delta combined
+        robot.move_to_position(gantry_x=400, x=50, y=0, z=-200)
+        robot.wait_until_done()
+
+        robot.grip_close()
 """
 
 from __future__ import annotations
 
 import logging
-import sys
+import threading
 import time
-from typing import Optional
+from dataclasses import dataclass, field
 
 import serial
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+from delta_kinematics import DeltaKinematics
+
+from coordinates import (
+    GANTRY_X_MAX as _GANTRY_X_MAX,
+    GANTRY_X_MIN as _GANTRY_X_MIN,
+    DELTA_KINEMATIC_AT_FIRMWARE_ZERO as _DELTA_OFFSET,
 )
-log = logging.getLogger("delta_robot")
+
+logger = logging.getLogger(__name__)
+
+BAUD = 1_000_000
+READ_TIMEOUT = 0.5       # seconds — how long readline blocks
+CONNECT_TIMEOUT = 5.0    # seconds — wait for READY after reset
+DONE_TIMEOUT = 30.0      # seconds — max wait for motion to finish
+
+# Delta joint limits in **kinematic** space (θ=0 = horizontal in delta_kinematics).
+# Home = 20° above horizontal = kinematic -20°; max down = -20 + 95 = 75°.
+MOTOR_ANGLE_MIN = -20.0   # degrees — kinematic angle at home
+MOTOR_ANGLE_MAX = 75.0    # degrees — max down from horizontal (~-75° from horizontal)
+GANTRY_X_MIN = _GANTRY_X_MIN  # mm — 0 at endstop (see coordinates.py)
+GANTRY_X_MAX = _GANTRY_X_MAX  # mm — max travel from endstop (500)
+
+DEFAULT_IK = DeltaKinematics(
+    upper_arm=150.0,
+    lower_arm=268.0,
+    Fd=82.5,
+    Ed=27.3,
+)
 
 
-class DeltaRobotError(Exception):
-    """Raised when the Arduino returns an ERR response."""
+class DeltaRobotError(RuntimeError):
+    """Any error originating from the delta robot controller."""
+
+
+@dataclass
+class Telemetry:
+    """Parsed TELEM response from the firmware."""
+    d1: float = 0.0
+    d2: float = 0.0
+    d3: float = 0.0
+    gx: float = 0.0
+    moving: bool = False
+    dxl_pos: int = 0
+    dxl_temp: int = 0
+    dxl_load: int = 0
+    dxl_ok: bool = False
 
 
 class DeltaRobot:
-    """Serial interface to the Delta Robot Arduino controller."""
+    """Serial interface to the FR8 delta robot ESP32 controller.
+
+    Accepts an optional ``ik`` parameter to override the default
+    inverse-kinematics geometry.  When omitted the factory default
+    (L=150, l=268, Fd=82.5, Ed=27.3) is used.
+    """
 
     def __init__(
         self,
         port: str,
-        baud: int = 115200,
-        timeout: float = 2.0,
-        settle_time: float = 2.0,
+        baud: int = BAUD,
+        timeout: float = READ_TIMEOUT,
+        ik: DeltaKinematics | None = None,
     ) -> None:
-        """
-        Open the serial connection and wait for the Arduino to reset.
+        self._port_name = port
+        self._baud = baud
+        self._timeout = timeout
+        self._ser: serial.Serial | None = None
+        self._lock = threading.Lock()
+        self.ik = ik or DEFAULT_IK
 
-        Args:
-            port: Serial port (e.g. '/dev/tty.usbmodem14101', 'COM3').
-            baud: Baud rate — must match the Arduino sketch (default 115200).
-            timeout: Read timeout in seconds.
-            settle_time: Seconds to wait after opening for the Arduino to boot.
-        """
-        self.ser = None  # set early so __del__ / close() never hits AttributeError
-        log.info("Connecting to %s @ %d baud …", port, baud)
-        self.ser = serial.Serial(port, baud, timeout=timeout)
-        time.sleep(settle_time)  # Arduino resets on serial open
+    # ── Context manager ──────────────────────────────────────────────────
 
-        # Drain the boot messages
-        while self.ser.in_waiting:
-            line = self.ser.readline().decode(errors="replace").strip()
-            if line:
-                log.info("Arduino: %s", line)
-
-        log.info("Connected.")
-
-    # ------------------------------------------------------------------ #
-    #  Low-level communication
-    # ------------------------------------------------------------------ #
-
-    def send(self, command: str) -> str:
-        """
-        Send a command string and return the first response line.
-
-        Raises DeltaRobotError if the Arduino replies with 'ERR:'.
-        """
-        cmd = command.strip()
-        log.debug("→ %s", cmd)
-        self.ser.reset_input_buffer()
-        self.ser.write(f"{cmd}\n".encode())
-
-        response = self._read_line()
-        if response.startswith("ERR"):
-            raise DeltaRobotError(response)
-        return response
-
-    def _read_line(self, timeout: Optional[float] = None) -> str:
-        """Read one line from serial, optionally with a custom timeout."""
-        old_timeout = self.ser.timeout
-        if timeout is not None:
-            self.ser.timeout = timeout
-        try:
-            raw = self.ser.readline()
-            line = raw.decode(errors="replace").strip()
-            log.debug("← %s", line)
-            return line
-        finally:
-            if timeout is not None:
-                self.ser.timeout = old_timeout
-
-    # ------------------------------------------------------------------ #
-    #  Motion commands
-    # ------------------------------------------------------------------ #
-
-    def move_to(self, deg1: float, deg2: float, deg3: float) -> str:
-        """Move all three motors to absolute degree positions."""
-        return self.send(f"M {deg1} {deg2} {deg3}")
-
-    def move_motor(self, motor: int, degrees: float) -> str:
-        """
-        Move a single motor to an absolute degree position.
-
-        Args:
-            motor: Motor number (1, 2, or 3).
-            degrees: Target angle in degrees.
-        """
-        if motor not in (1, 2, 3):
-            raise ValueError("motor must be 1, 2, or 3")
-        return self.send(f"M{motor} {degrees}")
-
-    def move_relative(self, deg1: float, deg2: float, deg3: float) -> str:
-        """Move all three motors by a relative amount (degrees)."""
-        return self.send(f"R {deg1} {deg2} {deg3}")
-
-    def home(self) -> str:
-        """Return all motors to the zero position."""
-        return self.send("HOME")
-
-    def stop(self) -> str:
-        """Decelerate all motors to a stop."""
-        return self.send("STOP")
-
-    def emergency_stop(self) -> str:
-        """Immediately halt all motors (no deceleration)."""
-        return self.send("ESTOP")
-
-    # ------------------------------------------------------------------ #
-    #  Configuration
-    # ------------------------------------------------------------------ #
-
-    def set_speed(self, rpm: float) -> str:
-        """Set the maximum speed in RPM for all motors."""
-        return self.send(f"SPD {rpm}")
-
-    def set_acceleration(self, rpm_per_sec: float) -> str:
-        """Set acceleration in RPM/s for all motors."""
-        return self.send(f"ACC {rpm_per_sec}")
-
-    def enable(self) -> str:
-        """Enable the DRV8825 drivers (energize coils, hold position)."""
-        return self.send("ENABLE")
-
-    def disable(self) -> str:
-        """Disable the DRV8825 drivers (coils free, no holding torque)."""
-        return self.send("DISABLE")
-
-    def zero(self) -> str:
-        """Set the current position as the new zero reference."""
-        return self.send("ZERO")
-
-    # ------------------------------------------------------------------ #
-    #  Status
-    # ------------------------------------------------------------------ #
-
-    def get_position(self) -> tuple[int, int, int]:
-        """
-        Get current motor positions in steps.
-
-        Returns:
-            (steps1, steps2, steps3)
-        """
-        resp = self.send("POS")
-        # Expected format: "POS: s1 s2 s3"
-        parts = resp.replace("POS:", "").strip().split()
-        return (int(parts[0]), int(parts[1]), int(parts[2]))
-
-    def is_moving(self) -> bool:
-        """Return True if any motor is still in motion."""
-        resp = self.send("STATUS")
-        return "MOVING" in resp
-
-    def wait_until_done(
-        self, poll_interval: float = 0.05, timeout: float = 60.0
-    ) -> None:
-        """
-        Block until all motors report IDLE or a DONE message arrives.
-
-        Uses a combination of listening for the asynchronous 'DONE' line
-        and polling STATUS as a fallback.
-
-        Args:
-            poll_interval: Seconds between STATUS polls.
-            timeout: Maximum seconds to wait before raising TimeoutError.
-        """
-        start = time.time()
-        while True:
-            # Check for any queued lines (the Arduino sends 'DONE' automatically)
-            while self.ser.in_waiting:
-                line = self._read_line(timeout=0.1)
-                if line == "DONE":
-                    return
-
-            # Fallback: explicit poll
-            if not self.is_moving():
-                return
-
-            if time.time() - start > timeout:
-                raise TimeoutError(f"Motors did not finish within {timeout} s")
-            time.sleep(poll_interval)
-
-    # ------------------------------------------------------------------ #
-    #  Context manager & cleanup
-    # ------------------------------------------------------------------ #
-
-    def close(self) -> None:
-        """Cleanly close the serial connection."""
-        if self.ser and self.ser.is_open:
-            self.ser.close()
-            log.info("Serial connection closed.")
-
-    def __enter__(self):
+    def __enter__(self) -> DeltaRobot:
+        self.connect()
         return self
 
-    def __exit__(self, *exc):
-        self.close()
+    def __exit__(self, *_: object) -> None:
+        self.disconnect()
 
-    def __del__(self):
-        self.close()
+    # ── Connection ───────────────────────────────────────────────────────
 
+    def connect(self) -> str:
+        """Open serial port, wait for firmware to respond, return startup banner.
 
-# ====================================================================== #
-#  Standalone demo
-# ====================================================================== #
+        Strategy: the ESP32 resets on DTR when the port opens. Instead of a
+        long fixed sleep we immediately start polling with PING at short
+        intervals so we connect as soon as the firmware is up (typically
+        under 1 second).
+        """
+        self._ser = serial.Serial(
+            self._port_name, self._baud, timeout=self._timeout,
+        )
 
+        deadline = time.time() + CONNECT_TIMEOUT
+        attempt = 0
+        while time.time() < deadline:
+            wait = 0.15 if attempt == 0 else 0.25
+            time.sleep(wait)
+            self._ser.reset_input_buffer()
+            attempt += 1
 
-def demo(port: str) -> None:
-    """Run a simple movement demo."""
-    with DeltaRobot(port) as robot:
-        print("\n--- Delta Robot Demo ---\n")
+            # Check for READY line in the buffer
+            line = self._readline()
+            if line == "READY":
+                logger.info("Connected (READY) after %d attempts", attempt)
+                return "READY"
 
-        print("Moving all motors to 90°…")
-        robot.move_to(90, 90, 90)
-        robot.wait_until_done()
-        print("Position:", robot.get_position())
+            # Actively probe with PING
+            try:
+                resp = self._command("PING")
+                if resp == "PONG":
+                    logger.info("Connected (PING) after %d attempts", attempt)
+                    return "READY (via PING)"
+            except (TimeoutError, RuntimeError):
+                logger.debug("PING attempt %d — no response yet", attempt)
 
-        print("Moving to staggered angles (45°, 90°, 135°)…")
-        robot.move_to(45, 90, 135)
-        robot.wait_until_done()
-        print("Position:", robot.get_position())
+        raise TimeoutError(
+            f"Firmware did not respond within {CONNECT_TIMEOUT}s "
+            f"after {attempt} attempts."
+        )
 
-        print("Relative move: +30° on each…")
-        robot.move_relative(30, 30, 30)
-        robot.wait_until_done()
-        print("Position:", robot.get_position())
+    def disconnect(self) -> None:
+        if self._ser and self._ser.is_open:
+            self._ser.close()
+        self._ser = None
 
-        print("Homing…")
-        robot.home()
-        robot.wait_until_done()
-        print("Position:", robot.get_position())
+    @property
+    def is_connected(self) -> bool:
+        return self._ser is not None and self._ser.is_open
 
-        print("\nDone!")
+    # ── Low-level serial helpers ─────────────────────────────────────────
 
+    def _send(self, cmd: str) -> None:
+        assert self._ser, "Not connected"
+        with self._lock:
+            self._ser.write(f"{cmd}\n".encode())
+            self._ser.flush()
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python delta_robot.py <serial_port>")
-        print("  macOS example:   python delta_robot.py /dev/tty.usbmodem14101")
-        print("  Linux example:   python delta_robot.py /dev/ttyUSB0")
-        print("  Windows example: python delta_robot.py COM3")
-        sys.exit(1)
+    def _readline(self) -> str | None:
+        """Read one line (blocking up to self._timeout). Returns None on timeout."""
+        try:
+            raw = self._ser.readline()
+            line = raw.decode(errors="replace").strip()
+            return line if line else None
+        except serial.SerialException:
+            return None
 
-    demo(sys.argv[1])
+    def _command(self, cmd: str) -> str:
+        """Send a command and return the first response line.
+
+        Flushes any stale data in the receive buffer before sending so
+        late-arriving responses from previous (timed-out) commands never
+        get misattributed to this one.
+        """
+        assert self._ser, "Not connected"
+        self._ser.reset_input_buffer()
+        self._send(cmd)
+        line = self._readline()
+        if line is None:
+            raise TimeoutError(f"No response to: {cmd}")
+        if line.startswith("ERR:"):
+            raise RuntimeError(f"Firmware error: {line[4:]}")
+        return line
+
+    def _command_ok(self, cmd: str) -> None:
+        """Send a command, expect OK."""
+        resp = self._command(cmd)
+        if resp != "OK":
+            raise RuntimeError(f"Expected OK for '{cmd}', got: {resp!r}")
+
+    # ── Delta motion (angles in degrees) ─────────────────────────────────
+
+    def _kinematic_to_firmware(self, a: float) -> float:
+        """Convert kinematic angle (θ=0 = horizontal) to firmware angle (0 = physical home)."""
+        return a - _DELTA_OFFSET
+
+    def _firmware_to_kinematic(self, a: float) -> float:
+        """Convert firmware angle to kinematic angle."""
+        return a + _DELTA_OFFSET
+
+    def move_delta(self, a1: float, a2: float, a3: float) -> None:
+        """Move the three delta arms to absolute joint angles (degrees, kinematic space)."""
+        f1 = self._kinematic_to_firmware(a1)
+        f2 = self._kinematic_to_firmware(a2)
+        f3 = self._kinematic_to_firmware(a3)
+        self._command_ok(f"M {f1:.4f} {f2:.4f} {f3:.4f}")
+
+    def move_gantry(self, x_mm: float) -> None:
+        """Move the gantry axis to an absolute X position (mm)."""
+        self._command_ok(f"G {x_mm:.4f}")
+
+    def move_all(
+        self, a1: float, a2: float, a3: float, x_mm: float,
+    ) -> None:
+        """Move delta + gantry simultaneously (delta angles in kinematic space)."""
+        f1 = self._kinematic_to_firmware(a1)
+        f2 = self._kinematic_to_firmware(a2)
+        f3 = self._kinematic_to_firmware(a3)
+        self._command_ok(f"MG {f1:.4f} {f2:.4f} {f3:.4f} {x_mm:.4f}")
+
+    def home(self) -> None:
+        """Move all axes to the current software zero (delta + gantry to 0)."""
+        self._command_ok("HOME")
+
+    def home_full(
+        self,
+        home_gantry: bool = True,
+        home_delta: bool = True,
+        home_gripper: bool = True,
+    ) -> None:
+        """
+        Run the full homing sequence (gantry endstop, delta to home angles, gripper open).
+        Uses coordinates.get_default_home() (reads saved delta home from file if set).
+        """
+        from coordinates import get_default_home
+        from homing import run_homing_sequence
+        run_homing_sequence(
+            self, get_default_home(),
+            home_gantry=home_gantry,
+            home_delta=home_delta,
+            home_gripper=home_gripper,
+        )
+
+    # ── Gripper ──────────────────────────────────────────────────────────
+
+    def grip_open(self) -> None:
+        self._command_ok("GRIP OPEN")
+
+    def grip_close(self) -> None:
+        self._command_ok("GRIP CLOSE")
+
+    def grip_position(self, pos: int) -> None:
+        """Set gripper to a raw Dynamixel position (0–4095)."""
+        self._command_ok(f"GRIP {pos}")
+
+    # ── Speed / acceleration ─────────────────────────────────────────────
+
+    def set_delta_speed(self, steps_per_sec: float) -> None:
+        self._command_ok(f"SPD {steps_per_sec:.1f}")
+
+    def set_delta_accel(self, steps_per_sec_sq: float) -> None:
+        self._command_ok(f"ACC {steps_per_sec_sq:.1f}")
+
+    def set_gantry_speed(self, steps_per_sec: float) -> None:
+        self._command_ok(f"GSPD {steps_per_sec:.1f}")
+
+    def set_gantry_accel(self, steps_per_sec_sq: float) -> None:
+        self._command_ok(f"GACC {steps_per_sec_sq:.1f}")
+
+    # ── Control ──────────────────────────────────────────────────────────
+
+    def stop(self) -> None:
+        """Decelerate all axes to a stop (controlled)."""
+        self._command_ok("STOP")
+
+    def emergency_stop(self) -> None:
+        """Immediate hard stop — no deceleration."""
+        self._command_ok("ESTOP")
+
+    def zero(self) -> None:
+        """Declare the current position as the origin for all axes."""
+        self._command_ok("ZERO")
+
+    # ── Queries ──────────────────────────────────────────────────────────
+
+    def get_position(self) -> tuple[float, float, float, float]:
+        """
+        Query current positions.
+
+        Returns:
+            (d1_deg, d2_deg, d3_deg, gantry_mm) in **kinematic** space for delta
+            (θ=0 = horizontal; matches delta_kinematics and IK/FK).
+        """
+        resp = self._command("POS")
+        if not resp.startswith("POS:"):
+            raise RuntimeError(f"Unexpected POS response: {resp!r}")
+        parts = resp[4:].split(",")
+        f1, f2, f3 = float(parts[0]), float(parts[1]), float(parts[2])
+        gx = float(parts[3])
+        k1 = self._firmware_to_kinematic(f1)
+        k2 = self._firmware_to_kinematic(f2)
+        k3 = self._firmware_to_kinematic(f3)
+        return (k1, k2, k3, gx)
+
+    def is_moving(self) -> bool:
+        resp = self._command("STATUS")
+        return "MOVING" in resp
+
+    def get_telemetry(self) -> Telemetry:
+        """Read full telemetry from the firmware (positions in kinematic space, Dynamixel state)."""
+        resp = self._command("TELEM")
+        if not resp.startswith("TELEM:"):
+            raise RuntimeError(f"Unexpected TELEM response: {resp!r}")
+        kv = dict(pair.split("=", 1) for pair in resp[6:].split(","))
+        f1 = float(kv.get("d1", 0))
+        f2 = float(kv.get("d2", 0))
+        f3 = float(kv.get("d3", 0))
+        return Telemetry(
+            d1=self._firmware_to_kinematic(f1),
+            d2=self._firmware_to_kinematic(f2),
+            d3=self._firmware_to_kinematic(f3),
+            gx=float(kv.get("gx", 0)),
+            moving=kv.get("moving", "0") == "1",
+            dxl_pos=int(float(kv.get("dxl_pos", 0))),
+            dxl_temp=int(float(kv.get("dxl_temp", 0))),
+            dxl_load=int(float(kv.get("dxl_load", 0))),
+            dxl_ok=kv.get("dxl_ok", "0") == "1",
+        )
+
+    def ping(self) -> bool:
+        """Heartbeat check. Returns True if firmware responds."""
+        try:
+            return self._command("PING") == "PONG"
+        except (TimeoutError, RuntimeError):
+            return False
+
+    # ── Wait helpers ─────────────────────────────────────────────────────
+
+    def wait_until_done(self, timeout: float = DONE_TIMEOUT) -> bool:
+        """
+        Block until the firmware sends DONE (all motors reached target).
+
+        Returns True on success, False on timeout.
+        Raises RuntimeError if the firmware reports an error.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            line = self._readline()
+            if line == "DONE":
+                return True
+            if line and line.startswith("ERR:"):
+                raise RuntimeError(f"Error during motion: {line[4:]}")
+        return False
+
+    def move_delta_and_wait(
+        self, a1: float, a2: float, a3: float,
+        timeout: float = DONE_TIMEOUT,
+    ) -> bool:
+        """Convenience: move delta, then block until done."""
+        self.move_delta(a1, a2, a3)
+        return self.wait_until_done(timeout)
+
+    def move_gantry_and_wait(
+        self, x_mm: float,
+        timeout: float = DONE_TIMEOUT,
+    ) -> bool:
+        """Convenience: move gantry, then block until done."""
+        self.move_gantry(x_mm)
+        return self.wait_until_done(timeout)
+
+    # ── Cartesian motion (IK on the host) ────────────────────────────────
+
+    def _validate_angles(
+        self, a1: float, a2: float, a3: float,
+    ) -> None:
+        for i, a in enumerate((a1, a2, a3), 1):
+            if not (MOTOR_ANGLE_MIN <= a <= MOTOR_ANGLE_MAX):
+                raise DeltaRobotError(
+                    f"Motor {i} angle {a:.2f}° is outside "
+                    f"[{MOTOR_ANGLE_MIN}, {MOTOR_ANGLE_MAX}]°"
+                )
+
+    def move_to_xyz(
+        self, x: float, y: float, z: float,
+        validate: bool = True,
+    ) -> tuple[float, float, float]:
+        """
+        Move the delta end-effector to a Cartesian position (mm).
+
+        Runs inverse kinematics, validates motor limits, and sends
+        the resulting joint angles to the firmware.
+
+        Args:
+            x, y, z:   Target position in the delta robot frame (mm).
+                        Z is negative below the base plate.
+            validate:   If True (default), raise on out-of-range angles.
+
+        Returns:
+            (a1, a2, a3) — the joint angles actually commanded (degrees).
+
+        Raises:
+            DeltaRobotError: If the position is unreachable or angles
+                             exceed motor limits.
+        """
+        try:
+            a1, a2, a3 = self.ik.inverse(x, y, z)
+        except ValueError as exc:
+            raise DeltaRobotError(
+                f"Target ({x:.1f}, {y:.1f}, {z:.1f}) is unreachable: {exc}"
+            ) from exc
+
+        if validate:
+            self._validate_angles(a1, a2, a3)
+
+        self.move_delta(a1, a2, a3)
+        logger.info(
+            "move_to_xyz(%.1f, %.1f, %.1f) → (%.2f°, %.2f°, %.2f°)",
+            x, y, z, a1, a2, a3,
+        )
+        return (a1, a2, a3)
+
+    def move_to_xyz_and_wait(
+        self,
+        x: float, y: float, z: float,
+        validate: bool = True,
+        timeout: float = DONE_TIMEOUT,
+    ) -> tuple[float, float, float]:
+        """Convenience: ``move_to_xyz`` then block until done."""
+        angles = self.move_to_xyz(x, y, z, validate=validate)
+        self.wait_until_done(timeout)
+        return angles
+
+    def move_to_position(
+        self,
+        gantry_x: float,
+        x: float,
+        y: float,
+        z: float,
+        validate: bool = True,
+    ) -> tuple[float, float, float]:
+        """
+        Move gantry + delta simultaneously to a desired end-effector pose.
+
+        Args:
+            gantry_x:  Target gantry position along the linear rail (mm).
+            x, y, z:   Target delta end-effector position (mm).
+            validate:   If True (default), check all limits.
+
+        Returns:
+            (a1, a2, a3) — the joint angles actually commanded (degrees).
+
+        Raises:
+            DeltaRobotError: If any target is out of range.
+        """
+        if validate and not (GANTRY_X_MIN <= gantry_x <= GANTRY_X_MAX):
+            raise DeltaRobotError(
+                f"Gantry position {gantry_x:.1f} mm is outside "
+                f"[{GANTRY_X_MIN}, {GANTRY_X_MAX}] mm"
+            )
+
+        try:
+            a1, a2, a3 = self.ik.inverse(x, y, z)
+        except ValueError as exc:
+            raise DeltaRobotError(
+                f"Delta target ({x:.1f}, {y:.1f}, {z:.1f}) is unreachable: {exc}"
+            ) from exc
+
+        if validate:
+            self._validate_angles(a1, a2, a3)
+
+        self.move_all(a1, a2, a3, gantry_x)
+        logger.info(
+            "move_to_position(gantry=%.1f, %.1f, %.1f, %.1f) "
+            "→ (%.2f°, %.2f°, %.2f°)",
+            gantry_x, x, y, z, a1, a2, a3,
+        )
+        return (a1, a2, a3)
+
+    def move_to_position_and_wait(
+        self,
+        gantry_x: float,
+        x: float, y: float, z: float,
+        validate: bool = True,
+        timeout: float = DONE_TIMEOUT,
+    ) -> tuple[float, float, float]:
+        """Convenience: ``move_to_position`` then block until done."""
+        angles = self.move_to_position(
+            gantry_x, x, y, z, validate=validate,
+        )
+        self.wait_until_done(timeout)
+        return angles
