@@ -221,7 +221,8 @@ All commands are newline-terminated text at 1 Mbaud.
 | `GRIP OPEN` | | Open gripper |
 | `GRIP CLOSE` | | Close gripper |
 | `GRIP pos` | `GRIP 2500` | Set gripper to raw position (0–4095) |
-| `HOME` | | Return all axes to zero |
+| `HOME` | | Move all axes to current software zero |
+| `GANTRY_HOME` | | Home gantry to endstop (move to limit, set 0, back off 2 mm) |
 | `STOP` | | Decelerate to stop |
 | `ESTOP` | | Immediate hard stop |
 | `ZERO` | | Declare current position as origin |
@@ -263,14 +264,22 @@ Default inverse kinematics parameters (configured in `delta_kinematics.py` and `
 | `Fd` | 36.7 mm | Base joint offset from centre |
 | `Ed` | 80.0 mm | Effector joint offset from centre |
 
-Coordinate system: origin at base centre, **Z points up** (workspace is at negative Z).
+Coordinate system: origin at base centre, **Z points down** (workspace is at negative Z).
+
+### Homing
+
+- **Gantry:** `GANTRY_HOME` moves the gantry toward the endstop (GPIO 34) until the switch is pressed, sets position to 0, then backs off 2 mm. Valid range is 0–500 mm from the endstop. Gantry motor “forward” (anticlockwise) increases position.
+- **Delta:** Home is the arms at their highest position (mechanical limit). Set the home angles in `python/coordinates.py` after manually moving to the limit and reading `POS`; then use `homing.run_homing_sequence()` or `robot.home_full()`.
+- **Gripper:** Home = open (Dynamixel position in `coordinates.GRIPPER_HOME_POSITION`).
+
+See `python/coordinates.py` for the unified coordinate system and `python/homing.py` for the homing API.
 
 ### Joint Limits
 
 | Axis | Min | Max |
 | ---- | --- | --- |
 | Delta arms | -70° | +70° |
-| Gantry | 0 mm | 800 mm |
+| Gantry | 0 mm (endstop) | 500 mm |
 
 ### Workspace (at default joint limits)
 
