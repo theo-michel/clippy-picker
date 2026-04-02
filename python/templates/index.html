@@ -1,1501 +1,767 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Delta Robot Controller</title>
-<style>
-/* ================================================================== */
-/*  CSS Custom Properties                                              */
-/* ================================================================== */
-:root {
-  --bg:          #0f1117;
-  --bg-card:     #1a1d27;
-  --bg-input:    #252836;
-  --bg-hover:    #2c3040;
-  --border:      #2e3247;
-  --text:        #e4e6f0;
-  --text-dim:    #8b8fa3;
-  --accent:      #6c8cff;
-  --accent-glow: rgba(108,140,255,.25);
-  --green:       #4ade80;
-  --green-dim:   rgba(74,222,128,.15);
-  --red:         #f87171;
-  --red-dim:     rgba(248,113,113,.15);
-  --orange:      #fb923c;
-  --orange-dim:  rgba(251,146,60,.15);
-  --yellow:      #facc15;
-  --radius:      10px;
-  --shadow:      0 2px 12px rgba(0,0,0,.35);
-  --font:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --mono:        'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picker – Dashboard</title>
+  <style>
+    :root {
+      --bg:           #f5f5f7;
+      --bg-card:      #ffffff;
+      --bg-input:     #f3f4f6;
+      --bg-hover:     #e5e7eb;
+      --border:       #d1d5db;
+      --border-subtle:#e5e7eb;
+      --text:         #111827;
+      --text-dim:     #6b7280;
+      --accent:       #2563eb;
+      --accent-soft:  rgba(37,99,235,0.08);
+      --green:        #16a34a;
+      --red:          #dc2626;
+      --radius:       10px;
+      --shadow:       0 8px 24px rgba(15,23,42,0.08);
+      --font:         system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono:         "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
 
-/* ================================================================== */
-/*  Reset & Base                                                       */
-/* ================================================================== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 15px; }
-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  line-height: 1.5;
-}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: var(--font);
+      background: radial-gradient(circle at top left, #e5edff, #f9fafb 52%, #f5f5f7 100%);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
 
-/* ================================================================== */
-/*  Top Bar                                                            */
-/* ================================================================== */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 24px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-.topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.logo {
-  font-size: 1.15rem;
-  font-weight: 700;
-  letter-spacing: .5px;
-  color: var(--accent);
-}
-.status-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--red);
-  transition: background .3s;
-}
-.status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.status-dot.moving    { background: var(--orange); box-shadow: 0 0 8px var(--orange); animation: pulse 1s infinite; }
-.status-label {
-  font-size: .82rem;
-  color: var(--text-dim);
-}
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(18px);
+      background: rgba(249, 250, 251, 0.9);
+      border-bottom: 1px solid rgba(209, 213, 219, 0.7);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #111827;
+    }
+    .topbar-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #4f46e5;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #9ca3af;
+      box-shadow: 0 0 0 1px rgba(156,163,175,0.5);
+    }
+    .status-dot.connected {
+      background: var(--green);
+      box-shadow: 0 0 0 1px rgba(34,197,94,0.4), 0 0 12px rgba(34,197,94,0.5);
+    }
+    .status-dot.moving {
+      animation: pulse 1s infinite;
+    }
+    .status-label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .link-btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
+    }
+    .link-btn:hover {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+      box-shadow: 0 4px 14px rgba(37,99,235,0.15);
+    }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: .4; }
-}
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
 
-/* Connection bar */
-.conn-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.conn-bar select, .conn-bar input[type="text"] {
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: .85rem;
-  font-family: var(--mono);
-  outline: none;
-}
-.conn-bar select:focus, .conn-bar input:focus {
-  border-color: var(--accent);
-}
+    .page {
+      max-width: 760px;
+      margin: 18px auto 32px;
+      padding: 0 16px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
 
-/* ================================================================== */
-/*  Buttons                                                            */
-/* ================================================================== */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-input);
-  color: var(--text);
-  font-size: .85rem;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: background .15s, border-color .15s, box-shadow .15s;
-  white-space: nowrap;
-}
-.btn:hover { background: var(--bg-hover); border-color: var(--accent); }
-.btn:active { transform: scale(.97); }
-.btn:disabled { opacity: .4; cursor: not-allowed; }
+    .conn-card,
+    .card {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow);
+      padding: 16px 18px;
+    }
+    .card-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .card-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--text-dim);
+    }
+    .card-caption {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
 
-.btn-accent  { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-accent:hover  { background: #5a7aee; }
+    .conn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .conn-row select {
+      min-width: 200px;
+      max-width: 100%;
+      background: var(--bg-input);
+      border-radius: 999px;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      outline: none;
+    }
+    .conn-row select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(37,99,235,0.18);
+    }
 
-.btn-green   { background: var(--green-dim); color: var(--green); border-color: rgba(74,222,128,.3); }
-.btn-green:hover   { background: rgba(74,222,128,.25); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.05s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+      box-shadow: 0 6px 16px rgba(37,99,235,0.25);
+    }
+    .btn-ghost {
+      background: var(--bg-input);
+    }
+    .btn:hover {
+      background: var(--bg-hover);
+      border-color: #9ca3af;
+    }
+    .btn:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+      box-shadow: none;
+    }
 
-.btn-orange  { background: var(--orange-dim); color: var(--orange); border-color: rgba(251,146,60,.3); }
-.btn-orange:hover  { background: rgba(251,146,60,.25); }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .status-chip {
+      padding: 10px 10px;
+      border-radius: 9px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+    }
+    .status-label-small {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+    .status-value {
+      margin-top: 2px;
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+    }
 
-.btn-red     { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,.3); }
-.btn-red:hover     { background: rgba(248,113,113,.25); }
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 2px;
+    }
+    .slider-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .slider-label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      min-width: 60px;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--border-subtle);
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 2px #ffffff, 0 4px 10px rgba(37,99,235,0.4);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #ffffff;
+      box-shadow: 0 4px 10px rgba(37,99,235,0.4);
+      cursor: pointer;
+    }
 
-.btn-estop {
-  background: var(--red);
-  color: #fff;
-  border: 2px solid #dc2626;
-  font-weight: 700;
-  font-size: 1rem;
-  padding: 12px 28px;
-  border-radius: 8px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  box-shadow: 0 0 20px rgba(248,113,113,.3);
-}
-.btn-estop:hover {
-  background: #dc2626;
-  box-shadow: 0 0 30px rgba(248,113,113,.5);
-}
+    .slider-input {
+      width: 72px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      text-align: center;
+      outline: none;
+    }
+    .slider-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(37,99,235,0.18);
+    }
+    .unit {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-left: 2px;
+    }
 
-/* ================================================================== */
-/*  Layout                                                             */
-/* ================================================================== */
-.main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  padding: 20px 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
+    .actions-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
 
-@media (max-width: 900px) {
-  .main { grid-template-columns: 1fr; }
-}
+    .cmd-status {
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      color: var(--text-dim);
+      transition: opacity 0.3s;
+    }
+    .cmd-status.ok { border-left: 3px solid var(--green); color: var(--text); }
+    .cmd-status.err { border-left: 3px solid var(--red); color: var(--red); }
 
-/* ================================================================== */
-/*  Cards                                                              */
-/* ================================================================== */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px 20px;
-  box-shadow: var(--shadow);
-}
-.card-title {
-  font-size: .78rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--text-dim);
-  margin-bottom: 14px;
-}
-
-/* ================================================================== */
-/*  Motor Controls                                                     */
-/* ================================================================== */
-.motor-group {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.motor-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: var(--bg-input);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-.motor-label {
-  font-weight: 600;
-  font-size: .9rem;
-  min-width: 68px;
-  color: var(--accent);
-}
-.motor-pos {
-  font-family: var(--mono);
-  font-size: .85rem;
-  color: var(--text-dim);
-  min-width: 80px;
-  text-align: right;
-}
-.motor-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  outline: none;
-}
-.motor-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px; height: 18px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 0 6px var(--accent-glow);
-}
-.motor-slider::-moz-range-thumb {
-  width: 18px; height: 18px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-}
-.motor-input {
-  width: 72px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: .85rem;
-  text-align: center;
-  padding: 5px;
-  outline: none;
-}
-.motor-input:focus { border-color: var(--accent); }
-.motor-unit {
-  font-size: .78rem;
-  color: var(--text-dim);
-}
-
-/* ================================================================== */
-/*  Coordinated Move                                                   */
-/* ================================================================== */
-.coord-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.coord-row label {
-  font-size: .82rem;
-  color: var(--text-dim);
-  min-width: 28px;
-}
-.coord-row input {
-  width: 80px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: .85rem;
-  text-align: center;
-  padding: 6px;
-  outline: none;
-}
-.coord-row input:focus { border-color: var(--accent); }
-
-/* ================================================================== */
-/*  Parameters                                                         */
-/* ================================================================== */
-.param-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.param-label {
-  font-size: .85rem;
-  color: var(--text-dim);
-  min-width: 110px;
-}
-.param-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 5px;
-  background: var(--border);
-  border-radius: 3px;
-  outline: none;
-}
-.param-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px; height: 16px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-}
-.param-slider::-moz-range-thumb {
-  width: 16px; height: 16px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-}
-.param-value {
-  font-family: var(--mono);
-  font-size: .82rem;
-  color: var(--text);
-  min-width: 64px;
-  text-align: right;
-}
-
-/* ================================================================== */
-/*  Actions grid                                                       */
-/* ================================================================== */
-.actions-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.estop-wrapper {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-/* ================================================================== */
-/*  Command log                                                        */
-/* ================================================================== */
-.log-panel {
-  grid-column: 1 / -1;
-}
-.log-scroll {
-  max-height: 200px;
-  overflow-y: auto;
-  font-family: var(--mono);
-  font-size: .78rem;
-  line-height: 1.7;
-  padding: 8px 0;
-}
-.log-entry {
-  display: flex;
-  gap: 10px;
-  padding: 2px 4px;
-  border-radius: 4px;
-}
-.log-entry:hover { background: var(--bg-input); }
-.log-time  { color: var(--text-dim); min-width: 60px; }
-.log-cmd   { color: var(--accent); min-width: 140px; }
-.log-resp  { color: var(--text); }
-.log-resp.err { color: var(--red); }
-
-/* Raw command */
-.raw-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.raw-input {
-  flex: 1;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: .85rem;
-  padding: 7px 10px;
-  outline: none;
-}
-.raw-input:focus { border-color: var(--accent); }
-
-/* Scrollbar */
-::-webkit-scrollbar       { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
-
-/* ================================================================== */
-/*  Music Reactive                                                     */
-/* ================================================================== */
-.music-btn {
-  padding: 14px 28px;
-  font-size: 1rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  border-radius: 8px;
-  width: 100%;
-  transition: background .2s, border-color .2s, box-shadow .3s;
-}
-.music-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-  box-shadow: 0 0 24px var(--accent-glow);
-  animation: music-pulse 1.5s ease-in-out infinite;
-}
-@keyframes music-pulse {
-  0%, 100% { box-shadow: 0 0 16px var(--accent-glow); }
-  50%      { box-shadow: 0 0 32px var(--accent-glow), 0 0 48px rgba(108,140,255,.12); }
-}
-.music-canvas {
-  width: 100%;
-  height: 80px;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  margin: 14px 0 10px;
-  display: block;
-}
-.music-bands {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 8px 0 4px;
-}
-.music-band {
-  flex: 1;
-  text-align: center;
-  padding: 10px 8px;
-  background: var(--bg-input);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-.band-label {
-  font-size: .72rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: .5px;
-}
-.band-value {
-  font-family: var(--mono);
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin-top: 4px;
-}
-.band-bass  .band-value { color: var(--red); }
-.band-mid   .band-value { color: var(--yellow); }
-.band-treble .band-value { color: var(--green); }
-.music-inactive-msg {
-  text-align: center;
-  padding: 20px 0;
-  font-size: .82rem;
-  color: var(--text-dim);
-}
-
-/* ================================================================== */
-/*  Connection Bars (split topbar into two rows)                       */
-/* ================================================================== */
-.conn-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 24px;
-}
-.conn-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.conn-row-label {
-  font-size: .75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .8px;
-  color: var(--text-dim);
-  min-width: 44px;
-}
-.conn-row select, .conn-row input[type="text"] {
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 10px;
-  font-size: .82rem;
-  font-family: var(--mono);
-  outline: none;
-}
-.conn-row select:focus { border-color: var(--accent); }
-.arm-status-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--red);
-  transition: background .3s;
-  flex-shrink: 0;
-}
-.arm-status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-
-/* ================================================================== */
-/*  Arm Control                                                        */
-/* ================================================================== */
-.arm-section {
-  grid-column: 1 / -1;
-}
-.arm-global-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.servo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-}
-.servo-card {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  transition: border-color .25s, box-shadow .25s;
-}
-.servo-card.torque-on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 4px 20px var(--accent-glow);
-}
-.servo-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-.servo-id-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px; height: 32px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 800;
-  font-size: .9rem;
-  margin-right: 10px;
-}
-.servo-name {
-  font-weight: 600;
-  font-size: .88rem;
-}
-.servo-meta {
-  font-size: .72rem;
-  color: var(--text-dim);
-}
-/* Torque toggle */
-.toggle-wrap { display: flex; align-items: center; gap: 8px; }
-.toggle-label { font-size: .72rem; color: var(--text-dim); }
-.toggle { position: relative; width: 38px; height: 20px; cursor: pointer; }
-.toggle input { display: none; }
-.toggle-track {
-  display: block; width: 38px; height: 20px;
-  background: var(--bg-hover); border: 1px solid var(--border);
-  border-radius: 100px; transition: all .2s;
-}
-.toggle input:checked + .toggle-track {
-  background: var(--green); border-color: var(--green);
-  box-shadow: 0 0 6px rgba(74,222,128,.3);
-}
-.toggle-thumb {
-  position: absolute; top: 2px; left: 2px;
-  width: 16px; height: 16px;
-  background: #fff; border-radius: 50%;
-  transition: transform .2s;
-  pointer-events: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,.3);
-}
-.toggle input:checked ~ .toggle-thumb { transform: translateX(18px); }
-
-/* Dial */
-.servo-dial-wrap { display: flex; justify-content: center; margin-bottom: 12px; }
-
-/* Servo slider row */
-.servo-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.servo-slider-row label {
-  font-size: .72rem;
-  color: var(--text-dim);
-  min-width: 28px;
-}
-.servo-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 5px;
-  background: var(--border);
-  border-radius: 3px;
-  outline: none;
-}
-.servo-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px; height: 18px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 0 6px var(--accent-glow);
-}
-.servo-slider::-moz-range-thumb {
-  width: 18px; height: 18px;
-  background: var(--accent);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-}
-.servo-num-input {
-  width: 56px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: .82rem;
-  text-align: center;
-  padding: 4px;
-  outline: none;
-  -moz-appearance: textfield;
-}
-.servo-num-input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.servo-num-input:focus { border-color: var(--accent); }
-
-/* Quick preset buttons */
-.servo-quick-row {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-}
-.servo-quick-btn {
-  flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-dim);
-  font-size: .72rem;
-  font-weight: 600;
-  padding: 5px 2px;
-  cursor: pointer;
-  transition: border-color .15s, color .15s;
-  font-family: var(--font);
-}
-.servo-quick-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-/* Present position readout */
-.servo-present {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.servo-present-label {
-  font-size: .68rem;
-  text-transform: uppercase;
-  letter-spacing: .8px;
-  color: var(--text-dim);
-}
-.servo-present-val {
-  font-size: 1.2rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--mono);
-}
-.servo-present-deg {
-  font-size: .75rem;
-  color: var(--text-dim);
-  margin-left: 4px;
-}
-</style>
+    @media (max-width: 640px) {
+      .status-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .slider-row {
+        grid-template-columns: minmax(0,1fr);
+        gap: 4px;
+      }
+      .slider-input-wrap {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 4px;
+      }
+    }
+  </style>
 </head>
 <body>
 
-<!-- ========================== TOP BAR ========================== -->
-<header class="topbar">
-  <div class="topbar-left">
-    <span class="logo">DELTA ROBOT</span>
-    <a href="/cartesian" class="btn btn-accent" style="margin-left:8px;padding:5px 14px;font-size:.8rem;">Cartesian IK</a>
-    <div class="status-dot" id="statusDot"></div>
-    <span class="status-label" id="statusLabel">Disconnected</span>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;">
-    <button class="btn" onclick="refreshPorts()" style="font-size:.78rem;">Refresh Ports</button>
-  </div>
-</header>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo">PICKER</span>
+      <span class="topbar-pill">Manual Control</span>
+      <div style="width:10px;"></div>
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">Disconnected</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/homing" class="link-btn">
+        <span>Homing Wizard</span>
+      </a>
+    </div>
+  </header>
 
-<!-- ========================== CONNECTION BARS ========================== -->
-<div class="conn-bars">
-  <div class="conn-row">
-    <span class="conn-row-label">Delta</span>
-    <select id="portSelect">
-      <option value="">-- select port --</option>
-    </select>
-    <button class="btn btn-green" id="btnConnect" onclick="connect()" style="padding:5px 12px;font-size:.8rem;">Connect</button>
-    <button class="btn btn-orange" id="btnDisconnect" onclick="disconnect()" disabled style="padding:5px 12px;font-size:.8rem;">Disconnect</button>
-    <button class="btn" onclick="connect(true)" style="padding:5px 12px;font-size:.8rem;">Sim</button>
-  </div>
-  <div class="conn-row">
-    <span class="conn-row-label">Arm</span>
-    <select id="armPortSelect">
-      <option value="">-- select port --</option>
-    </select>
-    <button class="btn btn-green" id="btnArmConnect" onclick="armConnect()" style="padding:5px 12px;font-size:.8rem;">Connect</button>
-    <button class="btn btn-orange" id="btnArmDisconnect" onclick="armDisconnect()" disabled style="padding:5px 12px;font-size:.8rem;">Disconnect</button>
-    <div class="arm-status-dot" id="armStatusDot"></div>
-    <span class="status-label" id="armStatusLabel" style="font-size:.78rem;">Disconnected</span>
-  </div>
-</div>
+  <main class="page">
 
-<!-- ========================== MAIN GRID ========================== -->
-<main class="main">
-
-  <!-- ---- Individual Motor Control ---- -->
-  <div class="card">
-    <div class="card-title">Individual Motor Control</div>
-    <div class="motor-group">
-      <div class="motor-row">
-        <span class="motor-label">Motor 1</span>
-        <input type="range" class="motor-slider" id="slider1" min="-360" max="360" value="0"
-               oninput="syncSlider(1)" onchange="sendMotor(1)">
-        <input type="number" class="motor-input" id="input1" value="0"
-               onchange="syncInput(1); sendMotor(1)">
-        <span class="motor-unit">deg</span>
-        <span class="motor-pos" id="pos1">0 steps</span>
+    <!-- Connection -->
+    <section class="conn-card">
+      <div class="card-header">
+        <div class="card-title">Connection</div>
+        <div class="card-caption" id="connCaption">Select the ESP32 serial port and connect.</div>
       </div>
-      <div class="motor-row">
-        <span class="motor-label">Motor 2</span>
-        <input type="range" class="motor-slider" id="slider2" min="-360" max="360" value="0"
-               oninput="syncSlider(2)" onchange="sendMotor(2)">
-        <input type="number" class="motor-input" id="input2" value="0"
-               onchange="syncInput(2); sendMotor(2)">
-        <span class="motor-unit">deg</span>
-        <span class="motor-pos" id="pos2">0 steps</span>
+      <div class="conn-row">
+        <select id="portSelect">
+          <option value="">Scanning ports…</option>
+        </select>
+        <button class="btn btn-primary" id="btnConnect" onclick="connect()">Connect</button>
+        <button class="btn btn-ghost" id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+        <button class="btn" onclick="refreshPorts()">Refresh</button>
       </div>
-      <div class="motor-row">
-        <span class="motor-label">Motor 3</span>
-        <input type="range" class="motor-slider" id="slider3" min="-360" max="360" value="0"
-               oninput="syncSlider(3)" onchange="sendMotor(3)">
-        <input type="number" class="motor-input" id="input3" value="0"
-               onchange="syncInput(3); sendMotor(3)">
-        <span class="motor-unit">deg</span>
-        <span class="motor-pos" id="pos3">0 steps</span>
+    </section>
+
+    <!-- Position readout -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">Position</div>
+        <div class="card-caption" id="homeStatus">Not homed</div>
       </div>
-    </div>
-  </div>
-
-  <!-- ---- Coordinated Move ---- -->
-  <div class="card">
-    <div class="card-title">Coordinated Move</div>
-
-    <p style="font-size:.82rem;color:var(--text-dim);margin-bottom:12px;">Absolute (degrees)</p>
-    <div class="coord-row" style="margin-bottom:14px;">
-      <label>M1</label><input type="number" id="coordD1" value="0">
-      <label>M2</label><input type="number" id="coordD2" value="0">
-      <label>M3</label><input type="number" id="coordD3" value="0">
-      <button class="btn btn-accent" onclick="sendCoordMove()">Go</button>
-    </div>
-
-    <p style="font-size:.82rem;color:var(--text-dim);margin-bottom:12px;">Relative (degrees)</p>
-    <div class="coord-row">
-      <label>M1</label><input type="number" id="relD1" value="0">
-      <label>M2</label><input type="number" id="relD2" value="0">
-      <label>M3</label><input type="number" id="relD3" value="0">
-      <button class="btn btn-accent" onclick="sendRelMove()">Go</button>
-    </div>
-  </div>
-
-  <!-- ---- Parameters ---- -->
-  <div class="card">
-    <div class="card-title">Parameters</div>
-
-    <div class="param-row">
-      <span class="param-label">Max Speed</span>
-      <input type="range" class="param-slider" id="speedSlider" min="1" max="300" value="60"
-             oninput="speedDirty = true; document.getElementById('speedVal').textContent = this.value + ' RPM'">
-      <span class="param-value" id="speedVal">60 RPM</span>
-      <button class="btn" onclick="sendSpeed()">Set</button>
-    </div>
-
-    <div class="param-row">
-      <span class="param-label">Acceleration</span>
-      <input type="range" class="param-slider" id="accelSlider" min="10" max="500" value="120"
-             oninput="accelDirty = true; document.getElementById('accelVal').textContent = this.value + ' RPM/s'">
-      <span class="param-value" id="accelVal">120 RPM/s</span>
-      <button class="btn" onclick="sendAccel()">Set</button>
-    </div>
-
-    <div class="param-row" style="margin-top:6px;">
-      <span class="param-label">Slider Range</span>
-      <input type="range" class="param-slider" id="rangeSlider" min="90" max="3600" value="360" step="90"
-             oninput="updateSliderRange(this.value)">
-      <span class="param-value" id="rangeVal">&plusmn;360&deg;</span>
-    </div>
-  </div>
-
-  <!-- ---- Actions ---- -->
-  <div class="card">
-    <div class="card-title">Actions</div>
-    <div class="actions-grid">
-      <button class="btn btn-green" onclick="sendHome()">Home (0,0,0)</button>
-      <button class="btn btn-orange" onclick="sendStop()">Stop</button>
-      <button class="btn" onclick="sendEnable()">Enable Drivers</button>
-      <button class="btn" onclick="sendDisable()">Disable Drivers</button>
-      <button class="btn" onclick="sendZero()">Set Zero Here</button>
-      <button class="btn" onclick="resetSliders()">Reset Sliders</button>
-    </div>
-    <div class="estop-wrapper">
-      <button class="btn btn-estop" onclick="sendEstop()">E-STOP</button>
-    </div>
-  </div>
-
-  <!-- ---- Music Reactive ---- -->
-  <div class="card" style="grid-column: 1 / -1;">
-    <div class="card-title">Music Reactive</div>
-    <button class="btn music-btn" id="btnMusic" onclick="toggleMusic()">
-      Start Music Mode
-    </button>
-    <canvas class="music-canvas" id="musicCanvas"></canvas>
-    <div id="musicInfo">
-      <div class="music-bands">
-        <div class="music-band band-bass">
-          <div class="band-label">Bass &rarr; Motor 1</div>
-          <div class="band-value" id="bandBass">&mdash;</div>
+      <div class="status-grid">
+        <div class="status-chip">
+          <div class="status-label-small">Motor 1</div>
+          <div class="status-value" id="posD1">--.-°</div>
         </div>
-        <div class="music-band band-mid">
-          <div class="band-label">Mid &rarr; Motor 2</div>
-          <div class="band-value" id="bandMid">&mdash;</div>
+        <div class="status-chip">
+          <div class="status-label-small">Motor 2</div>
+          <div class="status-value" id="posD2">--.-°</div>
         </div>
-        <div class="music-band band-treble">
-          <div class="band-label">Treble &rarr; Motor 3</div>
-          <div class="band-value" id="bandTreble">&mdash;</div>
+        <div class="status-chip">
+          <div class="status-label-small">Motor 3</div>
+          <div class="status-value" id="posD3">--.-°</div>
+        </div>
+        <div class="status-chip">
+          <div class="status-label-small">Gantry X</div>
+          <div class="status-value" id="posGx">--.- mm</div>
         </div>
       </div>
+    </section>
 
-      <div class="param-row" style="margin-top:14px;">
-        <span class="param-label">Sensitivity</span>
-        <input type="range" class="param-slider" id="musicSensitivity" min="0.5" max="4" value="1.8" step="0.1"
-               oninput="document.getElementById('sensVal').textContent = this.value + 'x'">
-        <span class="param-value" id="sensVal">1.8x</span>
+    <!-- Delta sliders -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">Delta Joints</div>
+        <div class="card-caption">Safe range 0–95° from mechanical home.</div>
       </div>
-      <div class="param-row">
-        <span class="param-label">Max Angle</span>
-        <input type="range" class="param-slider" id="musicMaxAngle" min="15" max="180" value="90" step="5"
-               oninput="document.getElementById('maxAngleVal').textContent = this.value + '&deg;'">
-        <span class="param-value" id="maxAngleVal">90&deg;</span>
-      </div>
-      <div class="param-row">
-        <span class="param-label">Smoothing</span>
-        <input type="range" class="param-slider" id="musicSmoothing" min="0.1" max="0.95" value="0.82" step="0.01"
-               oninput="document.getElementById('smoothVal').textContent = this.value">
-        <span class="param-value" id="smoothVal">0.82</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ---- Arm Control ---- -->
-  <div class="card arm-section">
-    <div class="card-title">Arm Control (Dynamixel XL330)</div>
-    <div class="arm-global-bar">
-      <button class="btn btn-accent" onclick="armCenterAll()">All to Center</button>
-      <button class="btn btn-green" onclick="armTorqueAll(true)">Torque ON (all)</button>
-      <button class="btn" onclick="armTorqueAll(false)">Torque OFF (all)</button>
-    </div>
-    <div class="servo-grid" id="armGrid"></div>
-  </div>
-
-  <!-- ---- Command Log ---- -->
-  <div class="card log-panel">
-    <div class="card-title">Command Log</div>
-    <div class="raw-row">
-      <input type="text" class="raw-input" id="rawInput" placeholder="Type raw serial command…"
-             onkeydown="if(event.key==='Enter') sendRaw()">
-      <button class="btn btn-accent" onclick="sendRaw()">Send</button>
-      <button class="btn" onclick="clearLog()">Clear</button>
-    </div>
-    <div class="log-scroll" id="logScroll"></div>
-  </div>
-
-</main>
-
-<!-- ========================== JAVASCRIPT ========================== -->
-<script>
-const API = '';  // same origin
-
-// Dirty flags — prevent pollState from overwriting sliders the user is adjusting
-let speedDirty = false;
-let accelDirty = false;
-
-// ---- Port list ----
-async function refreshPorts() {
-  try {
-    const res = await fetch(`${API}/api/ports`);
-    const ports = await res.json();
-    // Populate both Delta and Arm dropdowns
-    ['portSelect', 'armPortSelect'].forEach(selId => {
-      const sel = document.getElementById(selId);
-      const prev = sel.value;
-      sel.innerHTML = '<option value="">-- select port --</option>';
-      ports.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.device;
-        opt.textContent = `${p.device}  (${p.description})`;
-        sel.appendChild(opt);
-      });
-      if (prev) sel.value = prev;
-    });
-  } catch(e) {
-    console.error('Failed to list ports', e);
-  }
-}
-
-// ---- Connect / Disconnect ----
-async function connect(sim = false) {
-  const port = document.getElementById('portSelect').value;
-  if (!sim && !port) { alert('Select a serial port first.'); return; }
-  try {
-    const res = await fetch(`${API}/api/connect`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(sim ? {sim: true} : {port})
-    });
-    const data = await res.json();
-    if (!data.ok) alert(data.message);
-    updateConnUI(data.ok);
-  } catch(e) { alert('Connection failed: ' + e); }
-}
-
-async function disconnect() {
-  await fetch(`${API}/api/disconnect`, {method: 'POST'});
-  updateConnUI(false);
-}
-
-function updateConnUI(connected) {
-  document.getElementById('btnConnect').disabled = connected;
-  document.getElementById('btnDisconnect').disabled = !connected;
-}
-
-// ---- Slider ↔ Input sync ----
-function syncSlider(n) {
-  document.getElementById('input' + n).value = document.getElementById('slider' + n).value;
-}
-function syncInput(n) {
-  document.getElementById('slider' + n).value = document.getElementById('input' + n).value;
-}
-
-function updateSliderRange(val) {
-  document.getElementById('rangeVal').innerHTML = `&plusmn;${val}&deg;`;
-  for (let i = 1; i <= 3; i++) {
-    const s = document.getElementById('slider' + i);
-    s.min = -val;
-    s.max = val;
-  }
-}
-
-function resetSliders() {
-  for (let i = 1; i <= 3; i++) {
-    document.getElementById('slider' + i).value = 0;
-    document.getElementById('input' + i).value = 0;
-  }
-}
-
-// ---- API helpers ----
-async function post(endpoint, body = {}) {
-  try {
-    const res = await fetch(`${API}${endpoint}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body)
-    });
-    return await res.json();
-  } catch(e) {
-    console.error(e);
-    return {ok: false, response: String(e)};
-  }
-}
-
-// ---- Motor commands ----
-function sendMotor(n) {
-  const deg = parseFloat(document.getElementById('input' + n).value) || 0;
-  post('/api/move_motor', {motor: n, degrees: deg});
-}
-
-function sendCoordMove() {
-  const d1 = parseFloat(document.getElementById('coordD1').value) || 0;
-  const d2 = parseFloat(document.getElementById('coordD2').value) || 0;
-  const d3 = parseFloat(document.getElementById('coordD3').value) || 0;
-  post('/api/move', {d1, d2, d3});
-}
-
-function sendRelMove() {
-  const d1 = parseFloat(document.getElementById('relD1').value) || 0;
-  const d2 = parseFloat(document.getElementById('relD2').value) || 0;
-  const d3 = parseFloat(document.getElementById('relD3').value) || 0;
-  post('/api/move_relative', {d1, d2, d3});
-}
-
-function sendHome()  { post('/api/home'); resetSliders(); }
-function sendStop()  { post('/api/stop'); }
-function sendEstop() { post('/api/estop'); }
-function sendEnable()  { post('/api/enable'); }
-function sendDisable() { post('/api/disable'); }
-function sendZero()    { post('/api/zero'); resetSliders(); }
-
-function sendSpeed() {
-  const rpm = parseInt(document.getElementById('speedSlider').value);
-  post('/api/speed', {rpm}).then(() => { speedDirty = false; });
-}
-function sendAccel() {
-  const value = parseInt(document.getElementById('accelSlider').value);
-  post('/api/acceleration', {value}).then(() => { accelDirty = false; });
-}
-
-function sendRaw() {
-  const inp = document.getElementById('rawInput');
-  const cmd = inp.value.trim();
-  if (!cmd) return;
-  post('/api/raw', {command: cmd});
-  inp.value = '';
-}
-
-// ---- Status polling ----
-async function pollState() {
-  try {
-    const res = await fetch(`${API}/api/state`);
-    const s = await res.json();
-
-    const dot = document.getElementById('statusDot');
-    const lbl = document.getElementById('statusLabel');
-    dot.className = 'status-dot';
-
-    if (!s.connected) {
-      lbl.textContent = 'Disconnected';
-    } else if (s.moving) {
-      dot.classList.add('connected', 'moving');
-      lbl.textContent = `Moving — ${s.port}`;
-    } else {
-      dot.classList.add('connected');
-      lbl.textContent = `Idle — ${s.port}`;
-    }
-
-    updateConnUI(s.connected);
-
-    // Positions
-    for (let i = 0; i < 3; i++) {
-      document.getElementById('pos' + (i+1)).textContent = s.positions[i] + ' steps';
-    }
-
-    // Sync parameter sliders only when the user isn't adjusting them
-    if (!speedDirty) {
-      document.getElementById('speedSlider').value = s.speed_rpm;
-      document.getElementById('speedVal').textContent = s.speed_rpm + ' RPM';
-    }
-    if (!accelDirty) {
-      document.getElementById('accelSlider').value = s.accel_rpm_s;
-      document.getElementById('accelVal').textContent = s.accel_rpm_s + ' RPM/s';
-    }
-
-    // ---- Arm state ----
-    const armDot = document.getElementById('armStatusDot');
-    const armLbl = document.getElementById('armStatusLabel');
-    if (s.arm_connected) {
-      armDot.className = 'arm-status-dot connected';
-      armLbl.textContent = s.arm_port || 'Connected';
-    } else {
-      armDot.className = 'arm-status-dot';
-      armLbl.textContent = 'Disconnected';
-    }
-    updateArmConnUI(s.arm_connected);
-
-    ARM_IDS.forEach(id => {
-      const sid = String(id);
-      // Present position
-      const pos = s.arm_positions?.[sid];
-      if (pos !== undefined) {
-        const presEl = document.getElementById(`arm-pres-${id}`);
-        const degEl = document.getElementById(`arm-deg-${id}`);
-        if (presEl) presEl.textContent = pos;
-        if (degEl) degEl.textContent = ((pos / 4095) * 360).toFixed(1) + '\u00B0';
-        armUpdateDial(id, pos);
-      }
-      // Goal — only update if user isn't actively touching slider/input
-      const goal = s.arm_goal_positions?.[sid];
-      const slider = document.getElementById(`arm-slider-${id}`);
-      const num = document.getElementById(`arm-num-${id}`);
-      if (goal !== undefined &&
-          document.activeElement !== slider &&
-          document.activeElement !== num) {
-        slider.value = goal;
-        num.value = goal;
-      }
-      // Torque
-      const torque = s.arm_torques?.[sid];
-      if (torque !== undefined) {
-        document.getElementById(`arm-torq-${id}`).checked = torque;
-        document.getElementById(`arm-card-${id}`)
-          .classList.toggle('torque-on', torque);
-      }
-    });
-  } catch(e) { /* server down */ }
-}
-
-// ---- Log polling ----
-async function pollLog() {
-  try {
-    const res = await fetch(`${API}/api/log`);
-    const entries = await res.json();
-    const container = document.getElementById('logScroll');
-    container.innerHTML = entries.map(e =>
-      `<div class="log-entry">` +
-        `<span class="log-time">${e.time}</span>` +
-        `<span class="log-cmd">${esc(e.cmd)}</span>` +
-        `<span class="log-resp ${e.ok ? '' : 'err'}">${esc(e.response)}</span>` +
-      `</div>`
-    ).join('');
-  } catch(e) {}
-}
-
-function clearLog() {
-  document.getElementById('logScroll').innerHTML = '';
-}
-
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-// ---- Music Reactive Mode ----
-let musicActive = false;
-let audioCtx = null;
-let analyser = null;
-let micStream = null;
-let musicRAF = null;
-let lastMusicSend = 0;
-let savedSpeedRPM = 60;
-let savedAccelRPM = 120;
-
-// Smoothed band values for fluid motion
-let smoothBass = 0, smoothMid = 0, smoothTreble = 0;
-
-const MUSIC_SEND_INTERVAL = 80; // ms between motor commands
-
-async function toggleMusic() {
-  if (musicActive) {
-    stopMusic();
-  } else {
-    await startMusic();
-  }
-}
-
-async function startMusic() {
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch(e) {
-    alert('Microphone access denied or unavailable.\n\n' + e.message);
-    return;
-  }
-
-  try {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = parseFloat(document.getElementById('musicSmoothing').value);
-    source.connect(analyser);
-
-    // Save current speed/accel so we can restore later
-    savedSpeedRPM = parseInt(document.getElementById('speedSlider').value) || 60;
-    savedAccelRPM = parseInt(document.getElementById('accelSlider').value) || 120;
-
-    // Boost speed & acceleration for snappy reactive motion
-    await post('/api/speed', { rpm: 250 });
-    await post('/api/acceleration', { value: 500 });
-
-    smoothBass = 0; smoothMid = 0; smoothTreble = 0;
-    musicActive = true;
-
-    const btn = document.getElementById('btnMusic');
-    btn.textContent = 'Stop Music Mode';
-    btn.classList.add('active');
-
-    musicLoop();
-  } catch(e) {
-    alert('Audio setup failed: ' + e.message);
-    if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-  }
-}
-
-function stopMusic() {
-  musicActive = false;
-  if (musicRAF) { cancelAnimationFrame(musicRAF); musicRAF = null; }
-  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-  if (audioCtx)  { audioCtx.close(); audioCtx = null; }
-  analyser = null;
-
-  const btn = document.getElementById('btnMusic');
-  btn.textContent = 'Start Music Mode';
-  btn.classList.remove('active');
-
-  // Clear visualisation
-  const canvas = document.getElementById('musicCanvas');
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  document.getElementById('bandBass').innerHTML   = '&mdash;';
-  document.getElementById('bandMid').innerHTML    = '&mdash;';
-  document.getElementById('bandTreble').innerHTML = '&mdash;';
-
-  // Restore speed & acceleration, then home the robot
-  post('/api/speed', { rpm: savedSpeedRPM });
-  post('/api/acceleration', { value: savedAccelRPM });
-  post('/api/home');
-}
-
-function musicLoop() {
-  if (!musicActive || !analyser) return;
-  musicRAF = requestAnimationFrame(musicLoop);
-
-  // Update analyser smoothing in real-time
-  analyser.smoothingTimeConstant = parseFloat(document.getElementById('musicSmoothing').value);
-
-  const bufLen = analyser.frequencyBinCount;
-  const freqData = new Uint8Array(bufLen);
-  analyser.getByteFrequencyData(freqData);
-
-  // Draw frequency bars
-  drawMusicVis(freqData, bufLen);
-
-  // Split spectrum into three bands
-  // Bass: 0–300 Hz (roughly first ~15% of bins)
-  // Mid:  300–2000 Hz (next ~35%)
-  // Treble: 2000 Hz+ (remaining ~50%)
-  const nyquist = audioCtx.sampleRate / 2;
-  const binHz = nyquist / bufLen;
-  const bassEnd   = Math.min(Math.floor(300 / binHz), bufLen);
-  const midEnd    = Math.min(Math.floor(2000 / binHz), bufLen);
-
-  const sensitivity = parseFloat(document.getElementById('musicSensitivity').value);
-  const maxAngle    = parseFloat(document.getElementById('musicMaxAngle').value);
-
-  let bass = 0, mid = 0, treble = 0;
-  for (let i = 1; i < bassEnd; i++) bass += freqData[i];
-  bass = bassEnd > 1 ? (bass / (bassEnd - 1)) / 255.0 : 0;
-
-  for (let i = bassEnd; i < midEnd; i++) mid += freqData[i];
-  mid = midEnd > bassEnd ? (mid / (midEnd - bassEnd)) / 255.0 : 0;
-
-  for (let i = midEnd; i < bufLen; i++) treble += freqData[i];
-  treble = bufLen > midEnd ? (treble / (bufLen - midEnd)) / 255.0 : 0;
-
-  // Apply sensitivity & clamp
-  bass    = Math.min(bass * sensitivity, 1.0);
-  mid     = Math.min(mid * sensitivity, 1.0);
-  treble  = Math.min(treble * sensitivity, 1.0);
-
-  // Extra smoothing for fluid motion (exponential moving average)
-  const alpha = 0.35;
-  smoothBass   = smoothBass   + alpha * (bass - smoothBass);
-  smoothMid    = smoothMid    + alpha * (mid - smoothMid);
-  smoothTreble = smoothTreble + alpha * (treble - smoothTreble);
-
-  // Map to motor angles
-  const angle1 = Math.round(smoothBass * maxAngle);
-  const angle2 = Math.round(smoothMid * maxAngle);
-  const angle3 = Math.round(smoothTreble * maxAngle);
-
-  // Update band readouts
-  document.getElementById('bandBass').textContent   = angle1 + '\u00B0';
-  document.getElementById('bandMid').textContent    = angle2 + '\u00B0';
-  document.getElementById('bandTreble').textContent = angle3 + '\u00B0';
-
-  // Throttled motor command
-  const now = performance.now();
-  if (now - lastMusicSend > MUSIC_SEND_INTERVAL) {
-    lastMusicSend = now;
-    post('/api/move', { d1: angle1, d2: angle2, d3: angle3 });
-  }
-}
-
-function drawMusicVis(dataArray, bufferLength) {
-  const canvas = document.getElementById('musicCanvas');
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.offsetWidth;
-  const h = canvas.offsetHeight;
-
-  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-    canvas.width  = w * dpr;
-    canvas.height = h * dpr;
-  }
-
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  const nyquist = audioCtx.sampleRate / 2;
-  const binHz = nyquist / bufferLength;
-  const bassEnd = Math.min(Math.floor(300 / binHz), bufferLength);
-  const midEnd  = Math.min(Math.floor(2000 / binHz), bufferLength);
-
-  const barW = Math.max(w / bufferLength, 1);
-
-  for (let i = 0; i < bufferLength; i++) {
-    const barH = (dataArray[i] / 255) * h;
-    if (i < bassEnd)       ctx.fillStyle = 'rgba(248,113,113,0.85)';
-    else if (i < midEnd)   ctx.fillStyle = 'rgba(250,204,21,0.85)';
-    else                   ctx.fillStyle = 'rgba(74,222,128,0.85)';
-
-    ctx.fillRect(i * barW, h - barH, Math.max(barW - 1, 1), barH);
-  }
-}
-
-// ---- Arm Control ----
-const ARM_IDS = [4, 5, 6];
-const ARM_NAMES = {4: 'Joint 4', 5: 'Joint 5', 6: 'Claw'};
-const ARM_ARC_LEN = Math.PI * 75; // semicircle arc length for SVG dial
-let armTimers = {};
-
-function buildArmCards() {
-  const grid = document.getElementById('armGrid');
-  grid.innerHTML = ARM_IDS.map(id => `
-    <div class="servo-card" id="arm-card-${id}">
-      <div class="servo-card-header">
-        <div style="display:flex;align-items:center">
-          <div class="servo-id-badge">${id}</div>
-          <div>
-            <div class="servo-name">${ARM_NAMES[id]}</div>
-            <div class="servo-meta">XL330 &middot; ID ${id}</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Motor 1</div>
+          <input type="range" id="sliderD1" min="0" max="95" step="0.5"
+                 oninput="onDeltaSliderInput(1)" onchange="sendDelta()">
+          <div class="slider-input-wrap">
+            <input class="slider-input" id="inputD1" type="number" min="0" max="95" step="0.5"
+                   value="0" onchange="onDeltaInputChange(1)">
+            <span class="unit">°</span>
           </div>
         </div>
-        <div class="toggle-wrap">
-          <span class="toggle-label">Torque</span>
-          <label class="toggle">
-            <input type="checkbox" id="arm-torq-${id}" onchange="armSetTorque(${id}, this.checked)">
-            <span class="toggle-track"></span>
-            <span class="toggle-thumb"></span>
-          </label>
+        <div class="slider-row">
+          <div class="slider-label">Motor 2</div>
+          <input type="range" id="sliderD2" min="0" max="95" step="0.5"
+                 oninput="onDeltaSliderInput(2)" onchange="sendDelta()">
+          <div class="slider-input-wrap">
+            <input class="slider-input" id="inputD2" type="number" min="0" max="95" step="0.5"
+                   value="0" onchange="onDeltaInputChange(2)">
+            <span class="unit">°</span>
+          </div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">Motor 3</div>
+          <input type="range" id="sliderD3" min="0" max="95" step="0.5"
+                 oninput="onDeltaSliderInput(3)" onchange="sendDelta()">
+          <div class="slider-input-wrap">
+            <input class="slider-input" id="inputD3" type="number" min="0" max="95" step="0.5"
+                   value="0" onchange="onDeltaInputChange(3)">
+            <span class="unit">°</span>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div class="servo-dial-wrap">
-        <svg width="180" height="100" viewBox="0 0 180 100" overflow="visible">
-          <path d="M 15 90 A 75 75 0 0 1 165 90"
-            fill="none" stroke="var(--border)" stroke-width="10" stroke-linecap="round"/>
-          <path id="arm-arc-${id}"
-            d="M 15 90 A 75 75 0 0 1 165 90"
-            fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round"
-            stroke-dasharray="0 236"/>
-          <line id="arm-needle-${id}"
-            x1="90" y1="90" x2="90" y2="20"
-            stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"
-            transform="rotate(-90,90,90)"/>
-          <circle cx="90" cy="90" r="6" fill="var(--accent)"/>
-          <circle cx="90" cy="90" r="3" fill="var(--bg-input)"/>
-          <text x="10"  y="98" fill="var(--text-dim)" font-size="10" text-anchor="middle">0</text>
-          <text x="90"  y="14" fill="var(--text-dim)" font-size="10" text-anchor="middle">2048</text>
-          <text x="170" y="98" fill="var(--text-dim)" font-size="10" text-anchor="middle">4095</text>
-        </svg>
+    <!-- Gantry slider -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">Gantry</div>
+        <div class="card-caption">Travel 0–625 mm from endstop.</div>
       </div>
-
-      <div class="servo-slider-row">
-        <label>Goal</label>
-        <input type="range" class="servo-slider" id="arm-slider-${id}" min="0" max="4095" value="2048"
-          oninput="armOnSlide(${id}, this.value)"
-          onchange="armSendPos(${id}, this.value)">
-        <input type="number" class="servo-num-input" id="arm-num-${id}" value="2048" min="0" max="4095"
-          onchange="armOnNum(${id}, this.value)">
-      </div>
-
-      <div class="servo-quick-row">
-        <button class="servo-quick-btn" onclick="armSetGoal(${id},    0)">0</button>
-        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 1024)">25%</button>
-        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 2048)">Center</button>
-        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 3072)">75%</button>
-        <button class="servo-quick-btn" onclick="armSetGoal(${id}, 4095)">4095</button>
-      </div>
-
-      <div class="servo-present">
-        <div><div class="servo-present-label">Present Position</div></div>
-        <div>
-          <span class="servo-present-val" id="arm-pres-${id}">&mdash;</span>
-          <span class="servo-present-deg" id="arm-deg-${id}"></span>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">X Position</div>
+          <input type="range" id="sliderGx" min="0" max="625" step="1"
+                 oninput="onGantrySliderInput()" onchange="sendGantry()">
+          <div class="slider-input-wrap">
+            <input class="slider-input" id="inputGx" type="number" min="0" max="625" step="1"
+                   value="0" onchange="onGantryInputChange()">
+            <span class="unit">mm</span>
+          </div>
         </div>
       </div>
-    </div>
-  `).join('');
-}
-buildArmCards();
+    </section>
 
-function armUpdateDial(id, pos) {
-  const pct = pos / 4095;
-  const filled = pct * ARM_ARC_LEN;
-  const arc = document.getElementById(`arm-arc-${id}`);
-  if (arc) arc.setAttribute('stroke-dasharray', `${filled.toFixed(1)} ${(ARM_ARC_LEN - filled).toFixed(1)}`);
-  const angle = -90 + pct * 180;
-  const needle = document.getElementById(`arm-needle-${id}`);
-  if (needle) needle.setAttribute('transform', `rotate(${angle.toFixed(2)},90,90)`);
-}
+    <!-- Actions -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">Actions</div>
+        <div class="card-caption">Use the homing wizard first, then drive within the safe envelope.</div>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-primary" onclick="fullHome()">Full Home (gantry + delta + gripper)</button>
+        <button class="btn btn-ghost" onclick="goHome()">Go to Home (0,0,0)</button>
+        <button class="btn" id="btnRect" onclick="runRectangle()">Rectangle Sweep</button>
+      </div>
+    </section>
 
-function armOnSlide(id, v) {
-  document.getElementById(`arm-num-${id}`).value = v;
-  armUpdateDial(id, +v);
-  clearTimeout(armTimers[id]);
-  armTimers[id] = setTimeout(() => armSendPos(id, v), 40);
-}
+    <!-- Command Status -->
+    <div id="cmdStatus" class="cmd-status" style="display:none;"></div>
 
-function armOnNum(id, v) {
-  const val = Math.max(0, Math.min(4095, +v || 0));
-  document.getElementById(`arm-slider-${id}`).value = val;
-  document.getElementById(`arm-num-${id}`).value = val;
-  armUpdateDial(id, val);
-  armSendPos(id, val);
-}
+  </main>
 
-function armSetGoal(id, v) {
-  document.getElementById(`arm-slider-${id}`).value = v;
-  document.getElementById(`arm-num-${id}`).value = v;
-  armUpdateDial(id, v);
-  armSendPos(id, v);
-}
+  <script>
+    const $ = id => document.getElementById(id);
 
-function armSendPos(id, v) {
-  post('/api/arm/servo/' + id + '/position', { value: +v });
-}
+    async function apiGet(path) {
+      const res = await fetch(path);
+      return res.json();
+    }
 
-function armSetTorque(id, enabled) {
-  post('/api/arm/servo/' + id + '/torque', { enabled });
-}
+    async function apiPost(path, body = {}) {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      return res.json();
+    }
 
-function armCenterAll() {
-  post('/api/arm/center');
-}
+    function clamp(val, lo, hi) { return Math.max(lo, Math.min(hi, val)); }
 
-function armTorqueAll(enabled) {
-  ARM_IDS.forEach(id => post('/api/arm/servo/' + id + '/torque', { enabled }));
-}
+    // Kinematic ↔ slider (firmware/home-relative) conversion.
+    // Slider 0 = home, slider 95 = max depth.
+    // Kinematic 0 = horizontal; home = offset (e.g. -20°); max = offset + 95.
+    // kinematic = slider + offset;  slider = kinematic - offset
+    let DELTA_OFFSET = -20;  // updated from /api/state on first poll
 
-async function armConnect() {
-  const port = document.getElementById('armPortSelect').value;
-  if (!port) { alert('Select an arm port first.'); return; }
-  try {
-    const res = await fetch(`${API}/api/arm/connect`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ port })
-    });
-    const data = await res.json();
-    if (!data.ok) alert(data.message);
-    updateArmConnUI(data.ok);
-  } catch(e) { alert('Arm connection failed: ' + e); }
-}
+    function sliderToKinematic(v) { return v + DELTA_OFFSET; }
+    function kinematicToSlider(k) { return k - DELTA_OFFSET; }
 
-async function armDisconnect() {
-  await fetch(`${API}/api/arm/disconnect`, {method: 'POST'});
-  updateArmConnUI(false);
-}
+    // ── Command feedback ─────────────────────────────────────────────
+    let cmdFadeTimer = null;
+    function showCmd(label, response, ok) {
+      const el = $("cmdStatus");
+      el.style.display = "block";
+      el.className = "cmd-status " + (ok ? "ok" : "err");
+      const ts = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+      el.textContent = `[${ts}] ${label}  →  ${response}`;
+      clearTimeout(cmdFadeTimer);
+      cmdFadeTimer = setTimeout(() => { el.style.opacity = "0.5"; }, 4000);
+      el.style.opacity = "1";
+    }
 
-function updateArmConnUI(connected) {
-  document.getElementById('btnArmConnect').disabled = connected;
-  document.getElementById('btnArmDisconnect').disabled = !connected;
-}
+    async function cmd(path, body, label) {
+      try {
+        const res = await apiPost(path, body);
+        showCmd(label || path, res.response || res.message || "OK", res.ok);
+        return res;
+      } catch (e) {
+        showCmd(label || path, e.message, false);
+        return {ok: false};
+      }
+    }
 
-// ---- Init ----
-refreshPorts();
-setInterval(pollState, 250);
-setInterval(pollLog, 500);
-</script>
+    // ── Connection ───────────────────────────────────────────────────
+    let knownPort = null;
 
+    async function refreshPorts(preselectPort) {
+      try {
+        const ports = await apiGet("/api/ports");
+        const sel = $("portSelect");
+        const prev = sel.value;
+        sel.innerHTML = "";
+        if (!ports.length) {
+          sel.innerHTML = '<option value="">No serial ports found</option>';
+          return;
+        }
+        let usbSerialDevice = null;
+        ports.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.device;
+          opt.textContent = `${p.device} — ${p.description}`;
+          sel.appendChild(opt);
+          if (p.device.includes("usbserial") || p.device.includes("ttyUSB")) {
+            usbSerialDevice = p.device;
+          }
+        });
+        if (preselectPort && [...sel.options].some(o => o.value === preselectPort)) {
+          sel.value = preselectPort;
+        } else if (prev && [...sel.options].some(o => o.value === prev)) {
+          sel.value = prev;
+        } else if (usbSerialDevice) {
+          sel.value = usbSerialDevice;
+        }
+      } catch (e) {
+        console.error("Failed to list ports", e);
+      }
+    }
+
+    async function connect() {
+      const port = $("portSelect").value;
+      if (!port) { alert("Select a serial port first."); return; }
+      $("btnConnect").disabled = true;
+      $("connCaption").textContent = "Connecting…";
+      try {
+        const res = await apiPost("/api/connect", {port});
+        if (!res.ok) {
+          alert(res.message || "Connection failed");
+          $("btnConnect").disabled = false;
+        }
+        updateConnUI(res.ok, port);
+      } catch (e) {
+        alert("Connection failed: " + e);
+        $("btnConnect").disabled = false;
+        updateConnUI(false);
+      }
+    }
+
+    async function disconnect() {
+      try { await apiPost("/api/disconnect"); } finally { updateConnUI(false); }
+    }
+
+    function updateConnUI(connected, port) {
+      $("btnConnect").disabled = connected;
+      $("btnDisconnect").disabled = !connected;
+      $("connCaption").textContent = connected
+        ? "Connected to " + (port || "controller") + "."
+        : "Select the ESP32 serial port and connect.";
+    }
+
+    // ── Delta sliders ────────────────────────────────────────────────
+    function onDeltaSliderInput(i) {
+      const slider = $("sliderD" + i);
+      const input = $("inputD" + i);
+      const v = clamp(parseFloat(slider.value) || 0, 0, 95);
+      slider.value = v;
+      input.value = v.toFixed(1);
+    }
+
+    function onDeltaInputChange(i) {
+      const input = $("inputD" + i);
+      let v = parseFloat(input.value);
+      if (isNaN(v)) v = 0;
+      v = clamp(v, 0, 95);
+      input.value = v.toFixed(1);
+      $("sliderD" + i).value = v;
+      sendDelta();
+    }
+
+    async function sendDelta() {
+      const s1 = clamp(parseFloat($("sliderD1").value) || 0, 0, 95);
+      const s2 = clamp(parseFloat($("sliderD2").value) || 0, 0, 95);
+      const s3 = clamp(parseFloat($("sliderD3").value) || 0, 0, 95);
+      const d1 = sliderToKinematic(s1);
+      const d2 = sliderToKinematic(s2);
+      const d3 = sliderToKinematic(s3);
+      await cmd("/api/move", {d1, d2, d3}, `MOVE ${s1.toFixed(1)} ${s2.toFixed(1)} ${s3.toFixed(1)}°`);
+    }
+
+    // ── Gantry slider ────────────────────────────────────────────────
+    function onGantrySliderInput() {
+      const v = clamp(parseFloat($("sliderGx").value) || 0, 0, 625);
+      $("sliderGx").value = v;
+      $("inputGx").value = v.toFixed(0);
+    }
+
+    function onGantryInputChange() {
+      let v = parseFloat($("inputGx").value);
+      if (isNaN(v)) v = 0;
+      v = clamp(v, 0, 625);
+      $("inputGx").value = v.toFixed(0);
+      $("sliderGx").value = v;
+      sendGantry();
+    }
+
+    async function sendGantry() {
+      const x = clamp(parseFloat($("sliderGx").value) || 0, 0, 625);
+      await cmd("/api/move_gantry", {x}, `GANTRY ${x.toFixed(0)} mm`);
+    }
+
+    // ── Actions ──────────────────────────────────────────────────────
+    async function fullHome() {
+      await cmd("/api/full_home", {home_gantry: true, home_delta: true, home_gripper: true}, "FULL HOME");
+    }
+
+    async function goHome() {
+      await cmd("/api/home", {}, "GO HOME");
+    }
+
+    async function runRectangle() {
+      $("btnRect").disabled = true;
+      showCmd("RECTANGLE", "Running…", true);
+      try {
+        await cmd("/api/rectangle", {}, "RECTANGLE");
+      } finally {
+        $("btnRect").disabled = false;
+      }
+    }
+
+    // ── Polling ──────────────────────────────────────────────────────
+    let firstPoll = true;
+
+    async function pollState() {
+      try {
+        const s = await apiGet("/api/state");
+
+        const dot = $("statusDot");
+        const lbl = $("statusLabel");
+        dot.className = "status-dot";
+
+        if (!s.connected) {
+          lbl.textContent = "Disconnected";
+        } else if (s.moving) {
+          dot.classList.add("connected", "moving");
+          lbl.textContent = "Moving — " + (s.port || "");
+        } else {
+          dot.classList.add("connected");
+          lbl.textContent = "Idle — " + (s.port || "");
+        }
+
+        updateConnUI(s.connected, s.port);
+
+        if (s.delta_offset !== undefined) DELTA_OFFSET = s.delta_offset;
+
+        if (firstPoll && s.connected && s.port) {
+          knownPort = s.port;
+          await refreshPorts(s.port);
+        }
+        firstPoll = false;
+
+        // Positions from state are in kinematic space; convert to home-relative for display
+        const d1 = s.positions?.[0] ?? null;
+        const d2 = s.positions?.[1] ?? null;
+        const d3 = s.positions?.[2] ?? null;
+        const gx = s.gantry_mm ?? null;
+
+        if (d1 !== null) { const sv = kinematicToSlider(d1); $("posD1").textContent = sv.toFixed(1) + "°"; syncSlider(1, sv); }
+        if (d2 !== null) { const sv = kinematicToSlider(d2); $("posD2").textContent = sv.toFixed(1) + "°"; syncSlider(2, sv); }
+        if (d3 !== null) { const sv = kinematicToSlider(d3); $("posD3").textContent = sv.toFixed(1) + "°"; syncSlider(3, sv); }
+        if (gx !== null) {
+          $("posGx").textContent = gx.toFixed(1) + " mm";
+          const c = clamp(gx, 0, 625);
+          if (document.activeElement !== $("sliderGx") && document.activeElement !== $("inputGx")) {
+            $("sliderGx").value = c;
+            $("inputGx").value = c.toFixed(0);
+          }
+        }
+
+        const s1 = d1 !== null ? kinematicToSlider(d1) : 999;
+        const s2 = d2 !== null ? kinematicToSlider(d2) : 999;
+        const s3 = d3 !== null ? kinematicToSlider(d3) : 999;
+        const atHome = Math.abs(s1)<0.5 && Math.abs(s2)<0.5 && Math.abs(s3)<0.5 && Math.abs(gx??999)<1;
+        $("homeStatus").textContent = atHome ? "At home" : "Away from home";
+
+        if (s.last_command) {
+          const lc = s.last_command;
+          const el = $("cmdStatus");
+          if (el.style.display === "none" || el.dataset.cmd !== lc.cmd + lc.time) {
+            showCmd(lc.cmd, lc.response, lc.ok);
+            el.dataset.cmd = lc.cmd + lc.time;
+          }
+        }
+      } catch (e) {
+        if (firstPoll) { $("statusLabel").textContent = "Server unavailable"; }
+      }
+    }
+
+    function syncSlider(i, angle) {
+      const v = clamp(angle, 0, 95);
+      const slider = $("sliderD" + i);
+      const input = $("inputD" + i);
+      if (document.activeElement !== slider && document.activeElement !== input) {
+        slider.value = v;
+        input.value = v.toFixed(1);
+      }
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────
+    async function init() {
+      $("statusLabel").textContent = "Checking…";
+      try {
+        const st = await apiGet("/api/state");
+        if (st.connected && st.port) {
+          knownPort = st.port;
+        }
+      } catch {}
+      await refreshPorts(knownPort);
+      pollState();
+      setInterval(pollState, 300);
+    }
+
+    window.addEventListener("load", init);
+  </script>
 </body>
 </html>
+
