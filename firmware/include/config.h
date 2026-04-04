@@ -8,17 +8,17 @@
 
 #define SERIAL_BAUD 1000000
 
-// ── Dynamixel gripper (XL330 on Serial2 via Waveshare adapter) ──────────────
+// ── Feetech gripper (STS3215 on Serial2) ────────────────────────────────────
 
-#define DXL_RX_PIN 16  // ESP32 RX2
-#define DXL_TX_PIN 17  // ESP32 TX2
-#define DXL_DIR_PIN -1 // Waveshare v1.1 has auto-direction
-#define DXL_ID 1
-#define DXL_BAUD 57600
-#define DXL_PROTOCOL 2.0f
+#define STS_RX_PIN 16  // ESP32 RX2
+#define STS_TX_PIN 17  // ESP32 TX2
+#define STS_ID 5
+#define STS_BAUD 1000000
 
-#define GRIP_OPEN_POS 3095 // Dynamixel position units (0–4095)
-#define GRIP_CLOSE_POS 2036
+#define GRIP_OPEN_POS  2900 // Feetech position units
+#define GRIP_CLOSE_POS 1428
+#define STS_MOVE_SPEED 2000
+#define STS_MOVE_ACC   200
 
 // ── Stepper pin map (DRV8825 drivers) ───────────────────────────────────────
 

@@ -247,6 +247,7 @@ def api_disconnect():
 def api_state():
     """Return the current cached state (polled by the UI)."""
     from coordinates import DELTA_KINEMATIC_AT_FIRMWARE_ZERO
+
     return jsonify({**state, "delta_offset": DELTA_KINEMATIC_AT_FIRMWARE_ZERO})
 
 
@@ -375,6 +376,21 @@ def api_full_home():
     return jsonify({"ok": ok, "response": resp})
 
 
+@app.route("/api/grip", methods=["POST"])
+def api_grip():
+    """Control the gripper: OPEN, CLOSE, or a raw position."""
+    data = request.json or {}
+    action = data.get("action", "").upper()
+    if action == "OPEN":
+        resp, ok = robot_exec("GRIP OPEN", lambda: robot.grip_open())
+    elif action == "CLOSE":
+        resp, ok = robot_exec("GRIP CLOSE", lambda: robot.grip_close())
+    else:
+        pos = int(data.get("position", 0))
+        resp, ok = robot_exec(f"GRIP {pos}", lambda p: robot.grip_position(p), pos)
+    return jsonify({"ok": ok, "response": resp})
+
+
 @app.route("/api/rectangle", methods=["POST"])
 def api_rectangle():
     """Run a 2D rectangle: gantry to max, delta to max depth, gantry back, delta up.
@@ -388,9 +404,11 @@ def api_rectangle():
         DELTA_ANGLE_RANGE_FROM_HOME,
     )
 
-    delta_home = DELTA_KINEMATIC_AT_FIRMWARE_ZERO                   # -20° kinematic
-    delta_max = DELTA_KINEMATIC_AT_FIRMWARE_ZERO + DELTA_ANGLE_RANGE_FROM_HOME  # 75° kinematic
-    gantry_max = GANTRY_X_MAX                                       # 625 mm
+    delta_home = DELTA_KINEMATIC_AT_FIRMWARE_ZERO  # -20° kinematic
+    delta_max = (
+        DELTA_KINEMATIC_AT_FIRMWARE_ZERO + DELTA_ANGLE_RANGE_FROM_HOME
+    )  # 75° kinematic
+    gantry_max = GANTRY_X_MAX  # 625 mm
 
     def _run_rectangle():
         def _wait_idle(timeout: float = 60.0):
@@ -402,14 +420,27 @@ def api_rectangle():
                 time.sleep(0.2)
             raise TimeoutError("Timed out waiting for motion to complete")
 
+        robot.grip_open()
         robot.move_gantry(gantry_max)
         _wait_idle()
 
         robot.move_delta(delta_max, delta_max, delta_max)
         _wait_idle()
 
+        robot.grip_close()
+        time.sleep(0.5)
+
+        robot.move_delta(delta_home, delta_home, delta_home)
+        _wait_idle()
+
         robot.move_gantry(0.0)
         _wait_idle()
+
+        robot.move_delta(delta_max, delta_max, delta_max)
+        _wait_idle()
+
+        robot.grip_open()
+        time.sleep(0.5)
 
         robot.move_delta(delta_home, delta_home, delta_home)
         _wait_idle()

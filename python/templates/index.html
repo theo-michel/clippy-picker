@@ -413,7 +413,7 @@
         <div class="slider-row">
           <div class="slider-label">Motor 1</div>
           <input type="range" id="sliderD1" min="0" max="95" step="0.5"
-                 oninput="onDeltaSliderInput(1)" onchange="sendDelta()">
+                 oninput="onDeltaSliderInput(1)" onchange="onDeltaSliderInput(1)">
           <div class="slider-input-wrap">
             <input class="slider-input" id="inputD1" type="number" min="0" max="95" step="0.5"
                    value="0" onchange="onDeltaInputChange(1)">
@@ -423,7 +423,7 @@
         <div class="slider-row">
           <div class="slider-label">Motor 2</div>
           <input type="range" id="sliderD2" min="0" max="95" step="0.5"
-                 oninput="onDeltaSliderInput(2)" onchange="sendDelta()">
+                 oninput="onDeltaSliderInput(2)" onchange="onDeltaSliderInput(2)">
           <div class="slider-input-wrap">
             <input class="slider-input" id="inputD2" type="number" min="0" max="95" step="0.5"
                    value="0" onchange="onDeltaInputChange(2)">
@@ -433,7 +433,7 @@
         <div class="slider-row">
           <div class="slider-label">Motor 3</div>
           <input type="range" id="sliderD3" min="0" max="95" step="0.5"
-                 oninput="onDeltaSliderInput(3)" onchange="sendDelta()">
+                 oninput="onDeltaSliderInput(3)" onchange="onDeltaSliderInput(3)">
           <div class="slider-input-wrap">
             <input class="slider-input" id="inputD3" type="number" min="0" max="95" step="0.5"
                    value="0" onchange="onDeltaInputChange(3)">
@@ -453,13 +453,36 @@
         <div class="slider-row">
           <div class="slider-label">X Position</div>
           <input type="range" id="sliderGx" min="0" max="625" step="1"
-                 oninput="onGantrySliderInput()" onchange="sendGantry()">
+                 oninput="onGantrySliderInput()" onchange="onGantrySliderInput()">
           <div class="slider-input-wrap">
             <input class="slider-input" id="inputGx" type="number" min="0" max="625" step="1"
                    value="0" onchange="onGantryInputChange()">
             <span class="unit">mm</span>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Gripper -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">Gripper</div>
+        <div class="card-caption">Open = 2900 · Close = 1428</div>
+      </div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-label">Position</div>
+          <input type="range" id="sliderGrip" min="1428" max="2900" step="1"
+                 oninput="onGripSliderInput()" onchange="onGripSliderInput()" style="direction:rtl;">
+          <div class="slider-input-wrap">
+            <input class="slider-input" id="inputGrip" type="number" min="1428" max="2900" step="1"
+                   value="2900" onchange="onGripInputChange()">
+          </div>
+        </div>
+      </div>
+      <div class="actions-row" style="margin-top:10px;">
+        <button class="btn btn-primary" onclick="gripOpen()">Open</button>
+        <button class="btn btn-ghost" onclick="gripClose()">Close</button>
       </div>
     </section>
 
@@ -599,13 +622,32 @@
         : "Select the ESP32 serial port and connect.";
     }
 
+    // ── Throttle: fire at most once per `ms`, always fires the trailing call ─
+    function throttle(fn, ms) {
+      let timer = null, lastArgs = null;
+      return function(...args) {
+        lastArgs = args;
+        if (timer) return;
+        fn(...lastArgs);
+        timer = setTimeout(() => {
+          timer = null;
+          if (lastArgs) fn(...lastArgs);
+        }, ms);
+      };
+    }
+
+    const SEND_INTERVAL = 80; // ms between serial commands while dragging
+
     // ── Delta sliders ────────────────────────────────────────────────
+    const throttledDelta = throttle(() => sendDelta(), SEND_INTERVAL);
+
     function onDeltaSliderInput(i) {
       const slider = $("sliderD" + i);
       const input = $("inputD" + i);
       const v = clamp(parseFloat(slider.value) || 0, 0, 95);
       slider.value = v;
       input.value = v.toFixed(1);
+      throttledDelta();
     }
 
     function onDeltaInputChange(i) {
@@ -629,10 +671,13 @@
     }
 
     // ── Gantry slider ────────────────────────────────────────────────
+    const throttledGantry = throttle(() => sendGantry(), SEND_INTERVAL);
+
     function onGantrySliderInput() {
       const v = clamp(parseFloat($("sliderGx").value) || 0, 0, 625);
       $("sliderGx").value = v;
       $("inputGx").value = v.toFixed(0);
+      throttledGantry();
     }
 
     function onGantryInputChange() {
@@ -647,6 +692,42 @@
     async function sendGantry() {
       const x = clamp(parseFloat($("sliderGx").value) || 0, 0, 625);
       await cmd("/api/move_gantry", {x}, `GANTRY ${x.toFixed(0)} mm`);
+    }
+
+    // ── Gripper slider ─────────────────────────────────────────────
+    const throttledGrip = throttle(() => sendGrip(), SEND_INTERVAL);
+
+    function onGripSliderInput() {
+      const v = clamp(parseInt($("sliderGrip").value) || 1428, 1428, 2900);
+      $("sliderGrip").value = v;
+      $("inputGrip").value = v;
+      throttledGrip();
+    }
+
+    function onGripInputChange() {
+      let v = parseInt($("inputGrip").value);
+      if (isNaN(v)) v = 1428;
+      v = clamp(v, 1428, 2900);
+      $("inputGrip").value = v;
+      $("sliderGrip").value = v;
+      sendGrip();
+    }
+
+    async function sendGrip() {
+      const pos = clamp(parseInt($("sliderGrip").value) || 1428, 1428, 2900);
+      await cmd("/api/grip", {position: pos}, `GRIP ${pos}`);
+    }
+
+    async function gripOpen() {
+      $("sliderGrip").value = 2900;
+      $("inputGrip").value = 2900;
+      await cmd("/api/grip", {action: "OPEN"}, "GRIP OPEN");
+    }
+
+    async function gripClose() {
+      $("sliderGrip").value = 1428;
+      $("inputGrip").value = 1428;
+      await cmd("/api/grip", {action: "CLOSE"}, "GRIP CLOSE");
     }
 
     // ── Actions ──────────────────────────────────────────────────────

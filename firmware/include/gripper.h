@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "config.h"
 
-/// Dynamixel XL330 gripper control over Serial2 (via Waveshare adapter).
+/// Feetech STS3215 gripper control over Serial2.
 ///
 /// Provides open/close, arbitrary position control, and telemetry
 /// readback (position, temperature, load).

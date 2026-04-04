@@ -2,8 +2,8 @@
 Delta Robot Controller — serial interface to the ESP32 firmware.
 
 Communicates over USB serial at 1 Mbaud using a text-based protocol.
-Manages 3 delta-arm stepper motors, 1 gantry axis, and 1 Dynamixel
-XL330 gripper — all driven by the ESP32 firmware.
+Manages 3 delta-arm stepper motors, 1 gantry axis, and 1 Feetech
+STS3215 gripper — all driven by the ESP32 firmware.
 
 Supports both joint-space and Cartesian-space motion.  Cartesian
 commands run inverse kinematics on the host and send joint angles
@@ -270,7 +270,7 @@ class DeltaRobot:
         self._command_ok("GRIP CLOSE")
 
     def grip_position(self, pos: int) -> None:
-        """Set gripper to a raw Dynamixel position (0–4095)."""
+        """Set gripper to a raw servo position."""
         self._command_ok(f"GRIP {pos}")
 
     # ── Speed / acceleration ─────────────────────────────────────────────

@@ -31,7 +31,7 @@ Coordinate system
 
   Gripper:
 
-    - Raw Dynamixel position 0–4095; "home" = open (configurable).
+    - Raw servo position; "home" = open (configurable).
 """
 
 from __future__ import annotations
@@ -103,8 +103,8 @@ def save_delta_home(a1: float, a2: float, a3: float) -> None:
 
 # ── Gripper home ───────────────────────────────────────────────────────────
 
-# Dynamixel position for "gripper home" (fully open). Should match firmware GRIP_OPEN_POS.
-GRIPPER_HOME_POSITION = 3095  # 0–4095
+# Feetech position for "gripper home" (fully open). Should match firmware GRIP_OPEN_POS.
+GRIPPER_HOME_POSITION = 2900
 
 # ── Home position container ─────────────────────────────────────────────────
 

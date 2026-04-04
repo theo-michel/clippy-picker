@@ -103,6 +103,7 @@ void Protocol::_cmdMoveGantry() {
 void Protocol::_cmdGrip() {
     char* arg = strtok(NULL, " ");
     if (!arg) { error("GRIP needs OPEN/CLOSE/<pos>"); return; }
+    if (!gripper.isConnected()) { error("GRIPPER_DISCONNECTED"); return; }
 
     if      (strcmp(arg, "OPEN")  == 0) gripper.open();
     else if (strcmp(arg, "CLOSE") == 0) gripper.close();
