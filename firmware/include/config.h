@@ -10,21 +10,22 @@
 
 // ── Feetech gripper (STS3215 on Serial2) ────────────────────────────────────
 
-#define STS_RX_PIN 16  // ESP32 RX2
-#define STS_TX_PIN 17  // ESP32 TX2
+#define STS_RX_PIN 16 // ESP32 RX2
+#define STS_TX_PIN 17 // ESP32 TX2
 #define STS_ID 5
 #define STS_BAUD 1000000
 
-#define GRIP_OPEN_POS  2900 // Feetech position units
+#define GRIP_OPEN_POS 2900 // Feetech position units
 #define GRIP_CLOSE_POS 1428
 #define STS_MOVE_SPEED 2000
-#define STS_MOVE_ACC   200
+#define STS_MOVE_ACC 200
 
 // ── Stepper pin map (DRV8825 drivers) ───────────────────────────────────────
 
 // Delta motors
-#define M1_STEP_PIN 12
-#define M1_DIR_PIN 13
+// NOTE: I just changed the order of the pins to be more consistent for the design of the PCB
+#define M1_STEP_PIN 13
+#define M1_DIR_PIN 12
 #define M2_STEP_PIN 14
 #define M2_DIR_PIN 27
 #define M3_STEP_PIN 26
@@ -34,8 +35,9 @@
 #define DELTA_ENABLE_PIN 4
 
 // Gantry motor
-#define M4_STEP_PIN 32
-#define M4_DIR_PIN 33
+// NOTE: I just changed the order of the pins to be more consistent for the design of the PCB
+#define M4_STEP_PIN 33
+#define M4_DIR_PIN 32
 
 // ── Delta motor parameters ──────────────────────────────────────────────────
 //
