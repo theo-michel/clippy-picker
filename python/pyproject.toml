@@ -10,5 +10,7 @@ dependencies = [
     "ftservo-python-sdk>=2.0.0",
     "matplotlib>=3.10.8",
     "numpy>=2.4.2",
+    "opencv-python",
+    "pyrealsense2",
     "pyserial>=3.5",
 ]
