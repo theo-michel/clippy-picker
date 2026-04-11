@@ -42,34 +42,35 @@
 // ── Delta motor parameters ──────────────────────────────────────────────────
 //
 //   NEMA 17: 200 full steps/rev
-//   DRV8825: 1/16 microstepping  →  3 200 microsteps / motor rev
+//   DRV8825: 1/4 microstepping  →  2 400 microsteps / motor rev
 //   Pulley:  3 : 1 reduction
 //
 //   DRV8825 microstepping table (TI datasheet Table 1):
 //   MODE0 MODE1 MODE2 | Step mode
 //     L     L     L   | Full step
 //     H     L     L   | 1/2 step
-//     L     H     L   | 1/4 step
+//     L     H     L   | 1/4 step      ← delta motors
 //     H     H     L   | 1/8 step
-//     L     L     H   | 1/16 step
+//     L     L     H   | 1/16 step     ← gantry motor
 //     H     L     H   | 1/32 step
 //     L     H     H   | 1/32 step
 //     H     H     H   | 1/32 step
 //
-//   Current firmware assumes MODE0 = LOW, MODE1 = LOW, MODE2 = HIGH.
+//   Delta  MODE pins: MODE0 = LOW, MODE1 = HIGH, MODE2 = LOW.
+//   Gantry MODE pins: MODE0 = LOW, MODE1 = LOW,  MODE2 = HIGH.
 
-#define DELTA_MICROSTEPS 16
+#define DELTA_MICROSTEPS 4
 #define DELTA_FULL_STEPS_REV 200
 #define DELTA_PULLEY_RATIO 3
 
 #define DELTA_STEPS_PER_REV (long)(DELTA_FULL_STEPS_REV * DELTA_MICROSTEPS * DELTA_PULLEY_RATIO)
-#define DELTA_STEPS_PER_DEG (DELTA_STEPS_PER_REV / 360.0f) // ≈ 53.33
+#define DELTA_STEPS_PER_DEG (DELTA_STEPS_PER_REV / 360.0f) // ≈ 6.67
 
 // ── Gantry motor parameters ─────────────────────────────────────────────────
 //
 //   NEMA 17: 200 full steps/rev
-//   DRV8825: 1/16 microstepping  →  3 200 microsteps / motor rev
-//   GT2 belt, 20-tooth pulley    →  40 mm travel / motor rev
+//   DRV8825: 1/16 microstepping  →  3 200 microsteps / rev
+//   GT2 belt, 20-tooth pulley    →  40 mm / rev  →  80 steps/mm
 //
 
 #define GANTRY_MICROSTEPS 16
@@ -79,14 +80,14 @@
 
 #define GANTRY_STEPS_PER_REV (long)(GANTRY_FULL_STEPS_REV * GANTRY_MICROSTEPS)
 #define GANTRY_MM_PER_REV (GANTRY_PULLEY_TEETH * GANTRY_BELT_PITCH_MM)
-#define GANTRY_STEPS_PER_MM (GANTRY_STEPS_PER_REV / GANTRY_MM_PER_REV) // 160
+#define GANTRY_STEPS_PER_MM (GANTRY_STEPS_PER_REV / GANTRY_MM_PER_REV) // 80
 
 // ── Default speed / acceleration ────────────────────────────────────────────
 
-#define DELTA_DEFAULT_SPEED 8000.0f // steps / s
-#define DELTA_DEFAULT_ACCEL 4000.0f // steps / s²
-#define GANTRY_DEFAULT_SPEED 16000.0f
-#define GANTRY_DEFAULT_ACCEL 8000.0f
+#define DELTA_DEFAULT_SPEED 2000.0f // steps / s
+#define DELTA_DEFAULT_ACCEL 1000.0f // steps / s²
+#define GANTRY_DEFAULT_SPEED 8000.0f
+#define GANTRY_DEFAULT_ACCEL 4000.0f
 
 // ── Soft joint limits ───────────────────────────────────────────────────────
 // Firmware 0° = mechanical stop (21.8° above horizontal).
@@ -100,7 +101,7 @@
 
 // Gantry endstop (limit switch) for homing. LOW = pressed (at home).
 #define GANTRY_ENDSTOP_PIN 34
-#define GANTRY_HOME_SPEED 16000.0f  // steps/s — matches tested endstop speed
+#define GANTRY_HOME_SPEED 8000.0f   // steps/s — matches tested endstop speed
 #define GANTRY_HOME_BACKOFF_MM 2.0f // mm to back off after hitting endstop
 
 // ── Counts ──────────────────────────────────────────────────────────────────

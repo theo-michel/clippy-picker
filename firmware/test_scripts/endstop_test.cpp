@@ -5,7 +5,7 @@
 #define DIR_PIN 33
 #define LIMIT_PIN 34
 
-#define STEPS_PER_MM 160.0f
+#define STEPS_PER_MM 80.0f
 #define JOG_MM 10.0f
 #define JOG_STEP_SIZE (long)(JOG_MM * STEPS_PER_MM)
 #define MAX_POS 100000 // 625mm
@@ -36,8 +36,8 @@ void setup()
     Serial.begin(115200);
     pinMode(LIMIT_PIN, INPUT);
 
-    stepper.setMaxSpeed(16000);
-    stepper.setAcceleration(8000);
+    stepper.setMaxSpeed(8000);
+    stepper.setAcceleration(4000);
 
     Serial.println("--- Endstop Test ---");
     Serial.println("Homing...");
@@ -52,12 +52,12 @@ void loop()
         {
             stepper.stop();
             stepper.setCurrentPosition(0);
-            stepper.moveTo(320); // back off ~2mm
+            stepper.moveTo(160); // back off ~2mm
             state = BACKING_OFF;
         }
         else
         {
-            stepper.setSpeed(-16000);
+            stepper.setSpeed(-8000);
             stepper.runSpeed();
         }
         return;

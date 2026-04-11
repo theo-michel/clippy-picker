@@ -67,12 +67,12 @@ For the 17HS19-2004S1 at 2 A: **Vref ≈ 1.0 V**. We set it to a bit lower, arou
 
 All parameters are derived in `firmware/include/config.h`:
 
-| Parameter          | Value | Derivation                        |
-| ------------------ | ----- | --------------------------------- |
-| Delta steps/rev    | -     | 200 × microsteps × 3 (3:1 pulley) |
-| Delta steps/degree | 53.33 | delta_steps/rev / 360             |
-| Gantry steps/rev   | 6 400 | 200 × microsteps                  |
-| Gantry steps/mm    | 160   | 6 400 / 40 mm (20T GT2)           |
+| Parameter          | Value | Derivation                         |
+| ------------------ | ----- | ---------------------------------- |
+| Delta steps/rev    | 2 400 | 200 × 4 × 3 (3:1 pulley)          |
+| Delta steps/degree | 6.67  | 2 400 / 360                        |
+| Gantry steps/rev   | 3 200 | 200 × 16                           |
+| Gantry steps/mm    | 80    | 3 200 / 40 mm (20T GT2)            |
 
 ## Software
 
