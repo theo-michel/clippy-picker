@@ -18,11 +18,19 @@ import threading
 import time
 from typing import Optional
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 import serial.tools.list_ports
 
 from delta_robot import DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
+
+try:
+    from camera import RealsenseCamera, realsense_available
+except ImportError:
+    RealsenseCamera = None  # type: ignore[assignment,misc]
+
+    def realsense_available() -> bool:  # type: ignore[misc]
+        return False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,6 +59,10 @@ state = {
     "enabled": True,
     "last_command": None,
 }
+
+# Camera
+camera: Optional[RealsenseCamera] = None  # type: ignore[type-arg]
+camera_lock = threading.Lock()
 
 # Command log (ring buffer, newest first)
 command_log: list[dict] = []
@@ -168,14 +180,14 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/cartesian")
-def cartesian():
-    return render_template("cartesian.html")
-
-
 @app.route("/homing")
 def homing():
     return render_template("homing.html")
+
+
+@app.route("/calibration")
+def calibration():
+    return render_template("calibration.html")
 
 
 # ====================================================================== #
@@ -550,6 +562,55 @@ def api_ik_config():
             robot.ik = dk
         return jsonify({"ok": True, **ik_config})
     return jsonify(ik_config)
+
+
+# ---------- Camera ----------
+
+
+@app.route("/api/camera/status")
+def api_camera_status():
+    return jsonify(
+        {
+            "available": realsense_available(),
+            "running": camera is not None and camera.running,
+        }
+    )
+
+
+@app.route("/api/camera/start", methods=["POST"])
+def api_camera_start():
+    global camera
+    if not realsense_available():
+        return jsonify({"ok": False, "message": "pyrealsense2 not available"}), 503
+    with camera_lock:
+        if camera and camera.running:
+            return jsonify({"ok": True, "message": "Already running"})
+        try:
+            camera = RealsenseCamera()
+            camera.start()
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/api/camera/stop", methods=["POST"])
+def api_camera_stop():
+    global camera
+    with camera_lock:
+        if camera:
+            camera.stop()
+            camera = None
+    return jsonify({"ok": True})
+
+
+@app.route("/api/camera/feed")
+def api_camera_feed():
+    if not camera or not camera.running:
+        return "Camera not running", 503
+    return Response(
+        camera.generate_mjpeg(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 # ====================================================================== #
