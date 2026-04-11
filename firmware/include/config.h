@@ -42,11 +42,23 @@
 // ── Delta motor parameters ──────────────────────────────────────────────────
 //
 //   NEMA 17: 200 full steps/rev
-//   DRV8825: 1/32 microstepping  →  6 400 microsteps / motor rev
-//   Pulley:  3 : 1 reduction     →  19 200 microsteps / output rev
+//   DRV8825: 1/16 microstepping  →  3 200 microsteps / motor rev
+//   Pulley:  3 : 1 reduction
 //
+//   DRV8825 microstepping table (TI datasheet Table 1):
+//   MODE0 MODE1 MODE2 | Step mode
+//     L     L     L   | Full step
+//     H     L     L   | 1/2 step
+//     L     H     L   | 1/4 step
+//     H     H     L   | 1/8 step
+//     L     L     H   | 1/16 step
+//     H     L     H   | 1/32 step
+//     L     H     H   | 1/32 step
+//     H     H     H   | 1/32 step
+//
+//   Current firmware assumes MODE0 = LOW, MODE1 = LOW, MODE2 = HIGH.
 
-#define DELTA_MICROSTEPS 32
+#define DELTA_MICROSTEPS 16
 #define DELTA_FULL_STEPS_REV 200
 #define DELTA_PULLEY_RATIO 3
 
@@ -56,11 +68,11 @@
 // ── Gantry motor parameters ─────────────────────────────────────────────────
 //
 //   NEMA 17: 200 full steps/rev
-//   DRV8825: 1/32 microstepping  →  6 400 microsteps / motor rev
+//   DRV8825: 1/16 microstepping  →  3 200 microsteps / motor rev
 //   GT2 belt, 20-tooth pulley    →  40 mm travel / motor rev
 //
 
-#define GANTRY_MICROSTEPS 32
+#define GANTRY_MICROSTEPS 16
 #define GANTRY_FULL_STEPS_REV 200
 #define GANTRY_PULLEY_TEETH 20
 #define GANTRY_BELT_PITCH_MM 2.0f
@@ -77,9 +89,11 @@
 #define GANTRY_DEFAULT_ACCEL 8000.0f
 
 // ── Soft joint limits ───────────────────────────────────────────────────────
-// Home = 0° (arms at mechanical limit, ~20° above horizontal). Max 95° down to avoid 90° singularity.
-#define DELTA_ANGLE_MIN 0.0f  // degrees — home
-#define DELTA_ANGLE_MAX 95.0f // degrees — max down from home (~-75° from horizontal)
+// Firmware 0° = mechanical stop (21.8° above horizontal).
+// Home = 6.8° firmware (15° above horizontal).
+// Max = 101.8° firmware (home + 95° = 80° below horizontal).
+#define DELTA_ANGLE_MIN 0.0f   // degrees — mechanical stop
+#define DELTA_ANGLE_MAX 101.8f // degrees — home + 95° (80° below horizontal)
 
 #define GANTRY_POS_MIN 0.0f   // mm — endstop at home
 #define GANTRY_POS_MAX 625.0f // mm — max travel from endstop
