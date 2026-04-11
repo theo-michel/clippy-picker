@@ -322,15 +322,15 @@ def api_set_delta_home():
     data = request.json or {}
     use_zero = data.get("use_zero", False)
     if use_zero:
-        # Firmware 0 = physical home = kinematic DELTA_KINEMATIC_AT_FIRMWARE_ZERO (e.g. -20°)
-        from coordinates import DELTA_KINEMATIC_AT_FIRMWARE_ZERO as k0
+        from coordinates import DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3
 
-        save_delta_home(k0, k0, k0)
+        a1, a2, a3 = DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3
+        save_delta_home(a1, a2, a3)
         log_command(
-            "SET_DELTA_HOME", f"Saved ({k0}, {k0}, {k0})° kinematic (use_zero)", ok=True
+            "SET_DELTA_HOME", f"Saved ({a1}, {a2}, {a3})° kinematic (defaults)", ok=True
         )
         return jsonify(
-            {"ok": True, "delta_angle_1": k0, "delta_angle_2": k0, "delta_angle_3": k0}
+            {"ok": True, "delta_angle_1": a1, "delta_angle_2": a2, "delta_angle_3": a3}
         )
     with robot_lock:
         if robot is None:
@@ -396,18 +396,19 @@ def api_rectangle():
     """Run a 2D rectangle: gantry to max, delta to max depth, gantry back, delta up.
 
     All delta angles are in **kinematic** space (move_delta expects kinematic).
-    Home = DELTA_KINEMATIC_AT_FIRMWARE_ZERO (-20°), max = home + 95° = 75°.
+    Home = -15° kinematic (15° above horizontal), max = 80° kinematic.
     """
     from coordinates import (
         GANTRY_X_MAX,
+        DELTA_HOME_ANGLE_1,
         DELTA_KINEMATIC_AT_FIRMWARE_ZERO,
-        DELTA_ANGLE_RANGE_FROM_HOME,
+        DELTA_FIRMWARE_MAX_ANGLE,
     )
 
-    delta_home = DELTA_KINEMATIC_AT_FIRMWARE_ZERO  # -20° kinematic
+    delta_home = DELTA_HOME_ANGLE_1  # -15° kinematic (park position)
     delta_max = (
-        DELTA_KINEMATIC_AT_FIRMWARE_ZERO + DELTA_ANGLE_RANGE_FROM_HOME
-    )  # 75° kinematic
+        DELTA_KINEMATIC_AT_FIRMWARE_ZERO + DELTA_FIRMWARE_MAX_ANGLE
+    )  # 80° kinematic
     gantry_max = GANTRY_X_MAX  # 625 mm
 
     def _run_rectangle():

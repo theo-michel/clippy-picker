@@ -300,17 +300,17 @@ body {
     <div class="status-msg" id="step2Status"></div>
   </div>
 
-  <!-- Step 3: Delta Home -->
+  <!-- Step 3: Zero Delta -->
   <div class="step" id="step3">
     <div class="step-header">
       <div class="step-number">3</div>
-      <div class="step-title">Set Delta Home</div>
+      <div class="step-title">Zero Delta at Mechanical Limit</div>
     </div>
     <div class="step-desc">
       Delta motors are now <strong>released</strong> — you can freely move the arms by hand.
-      Push the end-effector to its <strong>mechanical home</strong> position
-      (arms at highest point / limit). Once positioned, press the button below
-      to lock the motors and zero at this location.
+      Push all three arms gently to the <strong>mechanical stop</strong>
+      (highest position, 21.8° above horizontal). Once positioned, press the button below
+      to lock the motors and set this as the zero reference.
     </div>
     <div class="position-readout" id="posReadout">
       <div class="pos-cell"><div class="label">Motor 1</div><div class="value" id="posD1">--</div></div>
@@ -319,15 +319,30 @@ body {
       <div class="pos-cell"><div class="label">Gantry</div><div class="value" id="posGx">--</div></div>
     </div>
     <div style="margin-top:14px;">
-      <button class="btn btn-home" id="btnSetHome" onclick="doSetDeltaHome()">Set Delta Home</button>
+      <button class="btn btn-home" id="btnSetZero" onclick="doSetDeltaZero()">Zero at Limit</button>
     </div>
     <div class="status-msg" id="step3Status"></div>
+  </div>
+
+  <!-- Step 4: Move to Home -->
+  <div class="step" id="step4">
+    <div class="step-header">
+      <div class="step-number">4</div>
+      <div class="step-title">Move to Home Position</div>
+    </div>
+    <div class="step-desc">
+      Move all three arms to the safe <strong>home</strong> position
+      (15° above horizontal). This backs off from the hard stop and becomes
+      the operational starting pose.
+    </div>
+    <button class="btn btn-home" id="btnMoveHome" onclick="doMoveToHome()">Move to Home</button>
+    <div class="status-msg" id="step4Status"></div>
   </div>
 
   <!-- Done -->
   <div class="done-banner" id="doneBanner">
     <h3>Homing Complete</h3>
-    <p>Gantry zeroed at endstop. Delta zeroed at mechanical home. Ready to operate.</p>
+    <p>Gantry zeroed at endstop. Delta zeroed at mechanical limit and parked at home. Ready to operate.</p>
     <a class="btn btn-primary" href="/">Go to Dashboard</a>
   </div>
 </div>
@@ -352,7 +367,7 @@ function setStatus(id, msg, cls = '') {
 }
 
 function activateStep(num) {
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 4; i++) {
     const el = $('step' + i);
     el.classList.remove('active', 'done');
     if (i < num) el.classList.add('done');
@@ -465,30 +480,44 @@ function startPositionPolling() {
   }, 300);
 }
 
-async function doSetDeltaHome() {
-  $('btnSetHome').disabled = true;
-  setStatus('step3Status', 'Setting zero...', 'busy');
+async function doSetDeltaZero() {
+  $('btnSetZero').disabled = true;
+  setStatus('step3Status', 'Setting zero at mechanical limit...', 'busy');
 
   try {
-    // Re-enable delta motors before zeroing
-    let res = await post('raw', {command: 'DELTA_ENABLE'});
+    await post('raw', {command: 'DELTA_ENABLE'});
 
-    // Tell firmware: current position = 0 for all motors
-    res = await post('zero');
-    if (!res.ok) { setStatus('step3Status', 'ZERO failed: ' + (res.response || ''), 'err'); $('btnSetHome').disabled = false; return; }
+    const res = await post('zero');
+    if (!res.ok) { setStatus('step3Status', 'ZERO failed: ' + (res.response || ''), 'err'); $('btnSetZero').disabled = false; return; }
 
-    // Save delta home as (0,0,0) in kinematic space
-    res = await post('set_delta_home', {use_zero: true});
-    if (!res.ok) { setStatus('step3Status', 'Save failed: ' + (res.message || ''), 'err'); $('btnSetHome').disabled = false; return; }
+    await post('set_delta_home', {use_zero: true});
 
-    setStatus('step3Status', 'Delta home saved.', 'ok');
+    setStatus('step3Status', 'Zeroed at mechanical limit.', 'ok');
     if (pollTimer) clearInterval(pollTimer);
-    $('step3').classList.remove('active');
-    $('step3').classList.add('done');
-    $('doneBanner').classList.add('show');
+    activateStep(4);
   } catch (e) {
     setStatus('step3Status', 'Error: ' + e.message, 'err');
-    $('btnSetHome').disabled = false;
+    $('btnSetZero').disabled = false;
+  }
+}
+
+async function doMoveToHome() {
+  $('btnMoveHome').disabled = true;
+  setStatus('step4Status', 'Moving to home position...', 'busy');
+
+  try {
+    const home = await api('delta_home');
+    const res = await post('move', {d1: home.delta_angle_1, d2: home.delta_angle_2, d3: home.delta_angle_3});
+    if (!res.ok) { setStatus('step4Status', 'Move failed: ' + (res.response || ''), 'err'); $('btnMoveHome').disabled = false; return; }
+
+    await waitUntilIdle('step4Status', 'Moving to home position...');
+    setStatus('step4Status', 'At home position.', 'ok');
+    $('step4').classList.remove('active');
+    $('step4').classList.add('done');
+    $('doneBanner').classList.add('show');
+  } catch (e) {
+    setStatus('step4Status', 'Error: ' + e.message, 'err');
+    $('btnMoveHome').disabled = false;
   }
 }
 

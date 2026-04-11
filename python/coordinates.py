@@ -42,36 +42,34 @@ from pathlib import Path
 
 # ── Gantry ─────────────────────────────────────────────────────────────────
 
-GANTRY_X_MIN = 0.0   # mm — endstop at home
-GANTRY_X_MAX = 625.0 # mm — max travel away from endstop
+GANTRY_X_MIN = 0.0  # mm — endstop at home
+GANTRY_X_MAX = 625.0  # mm — max travel away from endstop
 
 # Gantry motor: "forward" = anticlockwise spin → increases gantry position (away from endstop).
 
-# ── Delta home (manual) ────────────────────────────────────────────────────
+# ── Delta angles ──────────────────────────────────────────────────────────
 #
-# Best practice: define home as 0° in joint space.
-#   - Mechanical home = arms at highest position (~20° above horizontal).
-#   - After homing (manual push + "Set Zero Here" or drive to limit + "Set delta home"),
-#     store (0, 0, 0) as delta home so that 0° = that pose.
-#   - Positive angle = arm swings down from home. Stay away from the 90° (horizontal)
-#     singularity: e.g. limit travel to 95° from home (home + 95° ≈ -75° from horizontal).
+# Mechanical limit = arms at highest position (21.8° above horizontal).
+# After homing (manual push to limit + ZERO), firmware reports 0° at that pose.
+# Positive firmware angle = arm swings down.
 #
-# Range from home: 0° (home) to DELTA_ANGLE_RANGE_FROM_HOME (max safe travel down).
-DELTA_ANGLE_RANGE_FROM_HOME = 95.0   # degrees — home to max down (avoids ~90° singularity)
+# "Home" (safe park) = 15° above horizontal = 6.8° firmware.
+# Usable range is 95° from home → max = 6.8 + 95 = 101.8° firmware (80° below horizontal).
+#
+DELTA_FIRMWARE_MAX_ANGLE = 101.8  # degrees — home (6.8°) + 95° travel
 
 # Kinematic vs firmware angle: in delta_kinematics, θ=0° = upper arm horizontal.
-# If physical home is ~20° above horizontal, that pose is θ = -20° in kinematic space.
-# When you ZERO at that pose, the firmware reports 0. So: kinematic_θ = firmware_θ + this constant.
-DELTA_KINEMATIC_AT_FIRMWARE_ZERO = -20.0   # degrees (kinematic angle when firmware reports 0)
+# Mechanical stop is 21.8° above horizontal → θ = -21.8° kinematic.
+# When you ZERO there, firmware reports 0. So: kinematic_θ = firmware_θ + this offset.
+DELTA_KINEMATIC_AT_FIRMWARE_ZERO = (
+    -21.8
+)  # degrees (kinematic angle when firmware reports 0)
 
-# Delta home = arms at highest position (mechanical limit).
-# Set via the web UI "Set delta home" (captures current angles) or by editing
-# delta_home.json. Prefer "Set delta home (0,0,0)" after ZERO so home = 0°.
-
-# Default = kinematic angle at physical home (20° above horizontal = -20° in kinematics).
-DELTA_HOME_ANGLE_1 = -20.0   # degrees — default if no delta_home.json
-DELTA_HOME_ANGLE_2 = -20.0
-DELTA_HOME_ANGLE_3 = -20.0
+# Home (park) position — 15° above horizontal = -15° kinematic.
+# After zeroing at the mechanical limit, the homing wizard moves here.
+DELTA_HOME_ANGLE_1 = -15.0  # degrees (kinematic) — default if no delta_home.json
+DELTA_HOME_ANGLE_2 = -15.0
+DELTA_HOME_ANGLE_3 = -15.0
 
 # Persisted delta home (same directory as this module). Created by "Set delta home" in UI.
 _DELTA_HOME_FILE = Path(__file__).resolve().parent / "delta_home.json"
@@ -101,6 +99,7 @@ def save_delta_home(a1: float, a2: float, a3: float) -> None:
         )
     )
 
+
 # ── Gripper home ───────────────────────────────────────────────────────────
 
 # Feetech position for "gripper home" (fully open). Should match firmware GRIP_OPEN_POS.
@@ -108,9 +107,11 @@ GRIPPER_HOME_POSITION = 2900
 
 # ── Home position container ─────────────────────────────────────────────────
 
+
 @dataclass
 class HomePosition:
     """Defines what 'home' means for each subsystem."""
+
     gantry_x: float = 0.0
     delta_angle_1: float = DELTA_HOME_ANGLE_1
     delta_angle_2: float = DELTA_HOME_ANGLE_2

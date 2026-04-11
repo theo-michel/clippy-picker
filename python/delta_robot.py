@@ -49,14 +49,15 @@ from coordinates import (
 logger = logging.getLogger(__name__)
 
 BAUD = 1_000_000
-READ_TIMEOUT = 0.5       # seconds — how long readline blocks
-CONNECT_TIMEOUT = 5.0    # seconds — wait for READY after reset
-DONE_TIMEOUT = 30.0      # seconds — max wait for motion to finish
+READ_TIMEOUT = 0.5  # seconds — how long readline blocks
+CONNECT_TIMEOUT = 5.0  # seconds — wait for READY after reset
+DONE_TIMEOUT = 30.0  # seconds — max wait for motion to finish
 
 # Delta joint limits in **kinematic** space (θ=0 = horizontal in delta_kinematics).
-# Home = 20° above horizontal = kinematic -20°; max down = -20 + 95 = 75°.
-MOTOR_ANGLE_MIN = -20.0   # degrees — kinematic angle at home
-MOTOR_ANGLE_MAX = 75.0    # degrees — max down from horizontal (~-75° from horizontal)
+# Mechanical stop = -21.8° kinematic.  Home = -15° kinematic.
+# Max = home + 95° = 80° kinematic (firmware 101.8°).
+MOTOR_ANGLE_MIN = -21.8  # degrees — kinematic angle at mechanical stop
+MOTOR_ANGLE_MAX = 80.0  # degrees — home (-15°) + 95° travel
 GANTRY_X_MIN = _GANTRY_X_MIN  # mm — 0 at endstop (see coordinates.py)
 GANTRY_X_MAX = _GANTRY_X_MAX  # mm — max travel from endstop (500)
 
@@ -75,6 +76,7 @@ class DeltaRobotError(RuntimeError):
 @dataclass
 class Telemetry:
     """Parsed TELEM response from the firmware."""
+
     d1: float = 0.0
     d2: float = 0.0
     d3: float = 0.0
@@ -128,7 +130,9 @@ class DeltaRobot:
         under 1 second).
         """
         self._ser = serial.Serial(
-            self._port_name, self._baud, timeout=self._timeout,
+            self._port_name,
+            self._baud,
+            timeout=self._timeout,
         )
 
         deadline = time.time() + CONNECT_TIMEOUT
@@ -230,7 +234,11 @@ class DeltaRobot:
         self._command_ok(f"G {x_mm:.4f}")
 
     def move_all(
-        self, a1: float, a2: float, a3: float, x_mm: float,
+        self,
+        a1: float,
+        a2: float,
+        a3: float,
+        x_mm: float,
     ) -> None:
         """Move delta + gantry simultaneously (delta angles in kinematic space)."""
         f1 = self._kinematic_to_firmware(a1)
@@ -254,8 +262,10 @@ class DeltaRobot:
         """
         from coordinates import get_default_home
         from homing import run_homing_sequence
+
         run_homing_sequence(
-            self, get_default_home(),
+            self,
+            get_default_home(),
             home_gantry=home_gantry,
             home_delta=home_delta,
             home_gripper=home_gripper,
@@ -373,7 +383,10 @@ class DeltaRobot:
         return False
 
     def move_delta_and_wait(
-        self, a1: float, a2: float, a3: float,
+        self,
+        a1: float,
+        a2: float,
+        a3: float,
         timeout: float = DONE_TIMEOUT,
     ) -> bool:
         """Convenience: move delta, then block until done."""
@@ -381,7 +394,8 @@ class DeltaRobot:
         return self.wait_until_done(timeout)
 
     def move_gantry_and_wait(
-        self, x_mm: float,
+        self,
+        x_mm: float,
         timeout: float = DONE_TIMEOUT,
     ) -> bool:
         """Convenience: move gantry, then block until done."""
@@ -391,7 +405,10 @@ class DeltaRobot:
     # ── Cartesian motion (IK on the host) ────────────────────────────────
 
     def _validate_angles(
-        self, a1: float, a2: float, a3: float,
+        self,
+        a1: float,
+        a2: float,
+        a3: float,
     ) -> None:
         for i, a in enumerate((a1, a2, a3), 1):
             if not (MOTOR_ANGLE_MIN <= a <= MOTOR_ANGLE_MAX):
@@ -401,7 +418,10 @@ class DeltaRobot:
                 )
 
     def move_to_xyz(
-        self, x: float, y: float, z: float,
+        self,
+        x: float,
+        y: float,
+        z: float,
         validate: bool = True,
     ) -> tuple[float, float, float]:
         """
@@ -435,13 +455,20 @@ class DeltaRobot:
         self.move_delta(a1, a2, a3)
         logger.info(
             "move_to_xyz(%.1f, %.1f, %.1f) → (%.2f°, %.2f°, %.2f°)",
-            x, y, z, a1, a2, a3,
+            x,
+            y,
+            z,
+            a1,
+            a2,
+            a3,
         )
         return (a1, a2, a3)
 
     def move_to_xyz_and_wait(
         self,
-        x: float, y: float, z: float,
+        x: float,
+        y: float,
+        z: float,
         validate: bool = True,
         timeout: float = DONE_TIMEOUT,
     ) -> tuple[float, float, float]:
@@ -492,20 +519,32 @@ class DeltaRobot:
         logger.info(
             "move_to_position(gantry=%.1f, %.1f, %.1f, %.1f) "
             "→ (%.2f°, %.2f°, %.2f°)",
-            gantry_x, x, y, z, a1, a2, a3,
+            gantry_x,
+            x,
+            y,
+            z,
+            a1,
+            a2,
+            a3,
         )
         return (a1, a2, a3)
 
     def move_to_position_and_wait(
         self,
         gantry_x: float,
-        x: float, y: float, z: float,
+        x: float,
+        y: float,
+        z: float,
         validate: bool = True,
         timeout: float = DONE_TIMEOUT,
     ) -> tuple[float, float, float]:
         """Convenience: ``move_to_position`` then block until done."""
         angles = self.move_to_position(
-            gantry_x, x, y, z, validate=validate,
+            gantry_x,
+            x,
+            y,
+            z,
+            validate=validate,
         )
         self.wait_until_done(timeout)
         return angles

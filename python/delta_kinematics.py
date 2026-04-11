@@ -13,10 +13,10 @@ Joint angle convention (kinematic space):
   - θ = 0° means the upper arm is **horizontal** (elbow in the base plane, z = 0).
   - θ > 0° means the arm is tilted **down** from horizontal; θ < 0° means **up**.
   So cos(θ) and sin(θ) in the formulas depend on this numeric value; the kinematics
-  does care what number you pass. If your physical "home" is e.g. 20° above
-  horizontal, that pose corresponds to θ = -20° in this convention. The firmware
-  may report 0 at that pose (after ZERO); then use an offset when converting
-  between firmware and kinematic angles (see coordinates.DELTA_KINEMATIC_AT_FIRMWARE_ZERO).
+  does care what number you pass. The mechanical stop is 21.8° above horizontal,
+  which corresponds to θ = -21.8° in this convention. The firmware reports 0 at
+  that pose (after ZERO); use the offset in coordinates.DELTA_KINEMATIC_AT_FIRMWARE_ZERO
+  when converting between firmware and kinematic angles.
 
 Robot geometry parameters (all in the same unit, e.g. mm):
   upper_arm — shoulder-to-elbow length  (L)
