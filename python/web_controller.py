@@ -296,66 +296,21 @@ def api_home():
 
 @app.route("/api/delta_home", methods=["GET"])
 def api_delta_home():
-    """Return the saved delta home angles (from delta_home.json or defaults)."""
-    from coordinates import get_default_home
+    """Return the delta home angles."""
+    from coordinates import DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3
 
-    home = get_default_home()
     return jsonify(
         {
-            "delta_angle_1": home.delta_angle_1,
-            "delta_angle_2": home.delta_angle_2,
-            "delta_angle_3": home.delta_angle_3,
+            "delta_angle_1": DELTA_HOME_ANGLE_1,
+            "delta_angle_2": DELTA_HOME_ANGLE_2,
+            "delta_angle_3": DELTA_HOME_ANGLE_3,
         }
     )
 
 
-@app.route("/api/set_delta_home", methods=["POST"])
-def api_set_delta_home():
-    """
-    Save delta home angles.
-    Body: {} or { "use_zero": true }.
-    - use_zero false/omit: capture current robot position and save (use after driving to limit).
-    - use_zero true: save (0, 0, 0) — use after manual push then "Set Zero Here".
-    """
-    from coordinates import save_delta_home
-
-    data = request.json or {}
-    use_zero = data.get("use_zero", False)
-    if use_zero:
-        from coordinates import DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3
-
-        a1, a2, a3 = DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3
-        save_delta_home(a1, a2, a3)
-        log_command(
-            "SET_DELTA_HOME", f"Saved ({a1}, {a2}, {a3})° kinematic (defaults)", ok=True
-        )
-        return jsonify(
-            {"ok": True, "delta_angle_1": a1, "delta_angle_2": a2, "delta_angle_3": a3}
-        )
-    with robot_lock:
-        if robot is None:
-            return jsonify({"ok": False, "message": "Not connected"}), 400
-        try:
-            d1, d2, d3, _ = robot.get_position()
-            save_delta_home(d1, d2, d3)
-            log_command(
-                "SET_DELTA_HOME", f"Saved ({d1:.2f}, {d2:.2f}, {d3:.2f})°", ok=True
-            )
-            return jsonify(
-                {
-                    "ok": True,
-                    "delta_angle_1": d1,
-                    "delta_angle_2": d2,
-                    "delta_angle_3": d3,
-                }
-            )
-        except Exception as e:
-            return jsonify({"ok": False, "message": str(e)}), 500
-
-
 @app.route("/api/full_home", methods=["POST"])
 def api_full_home():
-    """Run full homing: gantry to endstop, delta to saved home angles, gripper open."""
+    """Run full homing: gantry to endstop, delta to home angles, gripper open."""
     from coordinates import get_default_home
     from homing import run_homing_sequence
 

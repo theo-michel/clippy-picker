@@ -490,8 +490,6 @@ async function doSetDeltaZero() {
     const res = await post('zero');
     if (!res.ok) { setStatus('step3Status', 'ZERO failed: ' + (res.response || ''), 'err'); $('btnSetZero').disabled = false; return; }
 
-    await post('set_delta_home', {use_zero: true});
-
     setStatus('step3Status', 'Zeroed at mechanical limit.', 'ok');
     if (pollTimer) clearInterval(pollTimer);
     activateStep(4);

@@ -258,7 +258,6 @@ class DeltaRobot:
     ) -> None:
         """
         Run the full homing sequence (gantry endstop, delta to home angles, gripper open).
-        Uses coordinates.get_default_home() (reads saved delta home from file if set).
         """
         from coordinates import get_default_home
         from homing import run_homing_sequence

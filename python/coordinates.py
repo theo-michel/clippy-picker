@@ -36,9 +36,7 @@ Coordinate system
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from pathlib import Path
 
 # ── Gantry ─────────────────────────────────────────────────────────────────
 
@@ -67,37 +65,9 @@ DELTA_KINEMATIC_AT_FIRMWARE_ZERO = (
 
 # Home (park) position — 15° above horizontal = -15° kinematic.
 # After zeroing at the mechanical limit, the homing wizard moves here.
-DELTA_HOME_ANGLE_1 = -15.0  # degrees (kinematic) — default if no delta_home.json
+DELTA_HOME_ANGLE_1 = -15.0  # degrees (kinematic)
 DELTA_HOME_ANGLE_2 = -15.0
 DELTA_HOME_ANGLE_3 = -15.0
-
-# Persisted delta home (same directory as this module). Created by "Set delta home" in UI.
-_DELTA_HOME_FILE = Path(__file__).resolve().parent / "delta_home.json"
-
-
-def load_delta_home() -> tuple[float, float, float]:
-    """Load delta home angles from delta_home.json, or return defaults."""
-    if not _DELTA_HOME_FILE.exists():
-        return (DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3)
-    try:
-        data = json.loads(_DELTA_HOME_FILE.read_text())
-        return (
-            float(data.get("delta_angle_1", DELTA_HOME_ANGLE_1)),
-            float(data.get("delta_angle_2", DELTA_HOME_ANGLE_2)),
-            float(data.get("delta_angle_3", DELTA_HOME_ANGLE_3)),
-        )
-    except (OSError, json.JSONDecodeError, TypeError):
-        return (DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3)
-
-
-def save_delta_home(a1: float, a2: float, a3: float) -> None:
-    """Save delta home angles to delta_home.json."""
-    _DELTA_HOME_FILE.write_text(
-        json.dumps(
-            {"delta_angle_1": a1, "delta_angle_2": a2, "delta_angle_3": a3},
-            indent=2,
-        )
-    )
 
 
 # ── Gripper home ───────────────────────────────────────────────────────────
@@ -124,16 +94,8 @@ class HomePosition:
 
 
 def get_default_home() -> HomePosition:
-    """Return the current home definition (delta angles from file if present)."""
-    a1, a2, a3 = load_delta_home()
-    return HomePosition(
-        gantry_x=0.0,
-        delta_angle_1=a1,
-        delta_angle_2=a2,
-        delta_angle_3=a3,
-        gripper_position=GRIPPER_HOME_POSITION,
-    )
+    """Return the default home definition."""
+    return HomePosition()
 
 
-# Default home — use get_default_home() to get angles from file.
 DEFAULT_HOME = get_default_home()
