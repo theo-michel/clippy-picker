@@ -24,3 +24,6 @@ Thumbs.db
 
 # Secrets / credentials
 .env
+
+# Intrinsics
+camera_intrinsics.md
