@@ -320,6 +320,15 @@ def api_delta_home():
     )
 
 
+@app.route("/api/home_xyz", methods=["GET"])
+def api_home_xyz():
+    """Return the XYZ position corresponding to the delta home angles."""
+    from coordinates import DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3
+
+    x, y, z = dk.forward(DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3)
+    return jsonify({"x": round(x, 2), "y": round(y, 2), "z": round(z, 2)})
+
+
 @app.route("/api/full_home", methods=["POST"])
 def api_full_home():
     """Run full homing: gantry to endstop, delta to home angles, gripper open."""

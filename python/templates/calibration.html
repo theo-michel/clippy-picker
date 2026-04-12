@@ -6,167 +6,186 @@
 <title>Picker — Calibration</title>
 <style>
 :root {
-  --bg:          #0f1117;
-  --bg-card:     #1a1d27;
-  --bg-input:    #252836;
-  --bg-hover:    #2c3040;
-  --border:      #2e3247;
-  --text:        #e4e6f0;
-  --text-dim:    #8b8fa3;
-  --accent:      #6c8cff;
-  --accent-glow: rgba(108,140,255,.25);
-  --green:       #4ade80;
-  --green-dim:   rgba(74,222,128,.15);
-  --red:         #f87171;
-  --red-dim:     rgba(248,113,113,.15);
-  --orange:      #fb923c;
-  --yellow:      #facc15;
-  --radius:      10px;
-  --shadow:      0 2px 12px rgba(0,0,0,.35);
-  --font:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --mono:        'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-  --axis-x:      #f87171;
-  --axis-y:      #4ade80;
-  --axis-z:      #60a5fa;
+  --bg:           #f5f5f7;
+  --bg-card:      #ffffff;
+  --bg-input:     #f3f4f6;
+  --bg-hover:     #e5e7eb;
+  --border:       #d1d5db;
+  --border-subtle:#e5e7eb;
+  --text:         #111827;
+  --text-dim:     #6b7280;
+  --accent:       #2563eb;
+  --accent-soft:  rgba(37,99,235,0.08);
+  --green:        #16a34a;
+  --green-dim:    rgba(22,163,74,0.12);
+  --red:          #dc2626;
+  --red-dim:      rgba(220,38,38,0.08);
+  --orange:       #f97316;
+  --radius:       10px;
+  --shadow:       0 8px 24px rgba(15,23,42,0.08);
+  --font:         system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono:         "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --axis-x:      #dc2626;
+  --axis-y:      #16a34a;
+  --axis-z:      #2563eb;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 15px; }
 body {
   font-family: var(--font);
-  background: var(--bg);
+  background: radial-gradient(circle at top left, #e5edff, #f9fafb 52%, #f5f5f7 100%);
   color: var(--text);
   min-height: 100vh;
   line-height: 1.5;
   overflow-x: hidden;
 }
 
-/* Top Bar */
+/* Top Bar — matches index.html */
 .topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 24px;
-  background: var(--bg-card); border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px;
+  backdrop-filter: blur(18px);
+  background: rgba(249,250,251,0.9);
+  border-bottom: 1px solid rgba(209,213,219,0.7);
 }
-.topbar-left { display: flex; align-items: center; gap: 14px; }
-.logo { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; color: var(--accent); text-decoration: none; }
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.logo {
+  font-size: 1rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: #111827; text-decoration: none;
+}
 .logo:hover { opacity: .85; }
-.nav-sep { color: var(--text-dim); font-weight: 300; }
-.nav-label { font-size: .9rem; color: var(--text); font-weight: 600; }
-.status-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--red); transition: background .3s;
+.topbar-pill {
+  padding: 4px 10px; border-radius: 999px;
+  background: #eef2ff; color: #4f46e5;
+  font-size: .75rem; font-weight: 500;
 }
-.status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.status-dot.moving { background: var(--orange); box-shadow: 0 0 8px var(--orange); animation: pulse 1s infinite; }
-.status-label { font-size: .82rem; color: var(--text-dim); }
+.status-dot {
+  width: 9px; height: 9px; border-radius: 999px;
+  background: #9ca3af;
+  box-shadow: 0 0 0 1px rgba(156,163,175,0.5);
+  transition: background .3s;
+}
+.status-dot.connected {
+  background: var(--green);
+  box-shadow: 0 0 0 1px rgba(34,197,94,0.4), 0 0 12px rgba(34,197,94,0.5);
+}
+.status-dot.moving { animation: pulse 1s infinite; }
+.status-label { font-size: .8rem; color: var(--text-dim); }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
-
-/* Buttons */
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 16px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--bg-input); color: var(--text);
-  font-size: .85rem; font-family: var(--font); cursor: pointer;
-  transition: background .15s, border-color .15s; white-space: nowrap;
+.link-btn {
+  padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: #fff;
+  font-size: .78rem; color: var(--text-dim);
+  text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  transition: all .15s;
 }
-.btn:hover { background: var(--bg-hover); border-color: var(--accent); }
-.btn:active { transform: scale(.97); }
-.btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-accent:hover { background: #5a7aee; }
-.btn-green { background: var(--green-dim); color: var(--green); border-color: rgba(74,222,128,.3); }
-.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,.3); }
-.btn-sm { padding: 4px 10px; font-size: .78rem; }
-.btn-estop {
-  background: var(--red); color: #fff; border: 2px solid #dc2626;
-  font-weight: 700; font-size: .85rem; padding: 8px 20px; border-radius: 6px;
-  text-transform: uppercase; letter-spacing: 1px;
-  box-shadow: 0 0 14px rgba(248,113,113,.25);
+.link-btn:hover {
+  background: #eff6ff; border-color: #bfdbfe;
+  color: #1d4ed8; box-shadow: 0 4px 14px rgba(37,99,235,0.15);
 }
-.btn-estop:hover { background: #dc2626; box-shadow: 0 0 24px rgba(248,113,113,.4); }
 
 .reach-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 12px; border-radius: 20px;
-  font-size: .78rem; font-weight: 600; letter-spacing: .5px;
-  transition: background .2s, color .2s;
+  display: inline-flex; align-items: center;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: .7rem; font-weight: 600; letter-spacing: .5px;
 }
 .reach-badge.ok  { background: var(--green-dim); color: var(--green); }
 .reach-badge.err { background: var(--red-dim); color: var(--red); }
 
+/* Buttons — matches index.html link-btn pattern */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: #fff; color: var(--text-dim);
+  font-size: .78rem; font-weight: 500; font-family: var(--font);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.btn:hover { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; box-shadow: 0 4px 14px rgba(37,99,235,0.15); }
+.btn:active { transform: translateY(1px); box-shadow: none; }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; box-shadow: 0 6px 16px rgba(37,99,235,0.25); }
+.btn-green { color: var(--green); border-color: rgba(22,163,74,0.3); font-weight: 600; }
+.btn-green:hover { background: rgba(22,163,74,0.08); border-color: var(--green); color: #15803d; box-shadow: 0 4px 14px rgba(22,163,74,0.15); }
+.btn-sm { padding: 4px 10px; font-size: .75rem; }
+.btn-red {
+  color: var(--red); border-color: rgba(220,38,38,0.3);
+  font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+}
+.btn-red:hover { background: rgba(220,38,38,0.08); border-color: var(--red); color: #b91c1c; box-shadow: 0 4px 14px rgba(220,38,38,0.15); }
+
 /* Layout */
 .main { max-width: 1440px; margin: 0 auto; padding: 16px 20px; }
 
-/* Workspace Row */
 .workspace-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 16px;
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 14px; margin-bottom: 16px;
 }
 @media (max-width: 960px) { .workspace-row { grid-template-columns: 1fr; } }
 
 .pane {
-  background: var(--bg-card); border: 1px solid var(--border);
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
   border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
   display: flex; flex-direction: column;
 }
 .pane-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  padding: 10px 14px; border-bottom: 1px solid var(--border-subtle);
+  gap: 12px; min-height: 42px; flex-shrink: 0;
 }
 .pane-title {
   font-size: .78rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1.2px; color: var(--text-dim);
+  letter-spacing: 1px; color: var(--text-dim); flex-shrink: 0;
 }
 .pane-coords {
-  font-family: var(--mono); font-size: .78rem; color: var(--text-dim);
+  font-family: var(--mono); font-size: .75rem; color: var(--text-dim);
+  white-space: nowrap;
 }
 
-/* Camera */
+/* Camera — body is position:relative with a fixed aspect ratio;
+   the <img> is absolutely placed so it can never push the pane taller. */
 .camera-body {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  background: #000; position: relative; min-height: 300px;
+  position: relative; background: #f9fafb;
+  height: 0; padding-bottom: 56.25%; /* 16:9 aspect box */
+  overflow: hidden;
 }
 .camera-body img {
+  position: absolute; inset: 0;
   width: 100%; height: 100%; object-fit: contain; display: block;
 }
 .camera-placeholder {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 12px; color: var(--text-dim);
-  font-size: .9rem; width: 100%; height: 100%; min-height: 300px;
+  font-size: .9rem;
 }
-.camera-placeholder svg {
-  width: 48px; height: 48px; opacity: .3;
-}
+.camera-placeholder svg { width: 48px; height: 48px; opacity: .3; }
 
-/* XY + Z group */
-.xy-z-body {
-  flex: 1; display: flex; min-height: 300px;
-}
+/* XY + Z — mirror the same aspect ratio so both panes match height */
+.xy-z-body { position: relative; height: 0; padding-bottom: 56.25%; }
 .xy-z-body canvas {
-  flex: 1; display: block; cursor: crosshair; touch-action: none;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  cursor: crosshair; touch-action: none;
 }
-
-/* Z Lever */
 .z-lever-col {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 56px;
   display: flex; flex-direction: column; align-items: center;
   justify-content: space-between; padding: 12px 6px;
-  width: 56px; border-left: 1px solid var(--border);
-  gap: 4px;
+  border-left: 1px solid var(--border-subtle);
+  gap: 4px; background: var(--bg-input);
 }
 .z-lever-label {
   font-size: .72rem; font-weight: 600; text-transform: uppercase;
   letter-spacing: 1px; color: var(--axis-z);
 }
 .z-lever-val {
-  font-family: var(--mono); font-size: .78rem; color: var(--axis-z);
+  font-family: var(--mono); font-size: .75rem; color: var(--axis-z);
   text-align: center;
 }
-.z-lever-tick {
-  font-family: var(--mono); font-size: .65rem; color: var(--text-dim);
-}
+.z-lever-tick { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); }
 .z-lever {
   writing-mode: vertical-lr; direction: rtl;
   -webkit-appearance: none; appearance: none;
@@ -180,7 +199,7 @@ body {
   -webkit-appearance: none;
   width: 16px; height: 16px; border-radius: 50%;
   background: var(--axis-z);
-  box-shadow: 0 0 6px rgba(96,165,250,.5);
+  box-shadow: 0 0 0 2px #fff, 0 4px 10px rgba(37,99,235,.4);
   margin-left: -5px;
 }
 .z-lever::-moz-range-track {
@@ -188,26 +207,24 @@ body {
 }
 .z-lever::-moz-range-thumb {
   width: 16px; height: 16px; border-radius: 50%;
-  background: var(--axis-z); border: none; cursor: ns-resize;
+  background: var(--axis-z); border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(37,99,235,.4); cursor: ns-resize;
 }
 
 /* Controls */
-.controls {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;
-}
+.controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 @media (max-width: 960px) { .controls { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 640px) { .controls { grid-template-columns: 1fr; } }
 
 .card {
-  background: var(--bg-card); border: 1px solid var(--border);
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
   border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow);
 }
 .card-title {
   font-size: .74rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1.2px; color: var(--text-dim); margin-bottom: 12px;
+  letter-spacing: 1px; color: var(--text-dim); margin-bottom: 12px;
 }
 
-/* Position inputs */
 .pos-group { display: flex; flex-direction: column; gap: 10px; }
 .pos-row { display: flex; align-items: center; gap: 10px; }
 .pos-label { font-weight: 700; font-size: .9rem; width: 20px; text-align: center; }
@@ -215,19 +232,18 @@ body {
 .pos-label.ly { color: var(--axis-y); }
 .pos-label.lz { color: var(--axis-z); }
 .pos-input {
-  width: 80px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text); font-family: var(--mono);
-  font-size: .85rem; text-align: center; padding: 5px; outline: none;
+  width: 80px; background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text); font-family: var(--mono);
+  font-size: .85rem; text-align: center; padding: 5px 8px; outline: none;
 }
-.pos-input:focus { border-color: var(--accent); }
+.pos-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(37,99,235,.18); }
 .pos-unit { font-size: .72rem; color: var(--text-dim); }
 
-/* Angle bars */
 .angles-group { display: flex; flex-direction: column; gap: 10px; }
 .angle-row {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; background: var(--bg-input);
-  border-radius: 8px; border: 1px solid var(--border);
+  border-radius: 8px; border: 1px solid var(--border-subtle);
 }
 .angle-label { font-weight: 600; font-size: .85rem; color: var(--accent); min-width: 28px; }
 .angle-bar-track {
@@ -239,10 +255,10 @@ body {
   background: var(--accent); transition: width .15s, left .15s;
 }
 .angle-value {
-  font-family: var(--mono); font-size: .85rem; min-width: 64px; text-align: right;
+  font-family: var(--mono); font-size: .85rem; min-width: 64px;
+  text-align: right; color: var(--text);
 }
 
-/* Actions */
 .actions-col { display: flex; flex-direction: column; gap: 10px; }
 .actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
 </style>
@@ -252,21 +268,19 @@ body {
 <header class="topbar">
   <div class="topbar-left">
     <a class="logo" href="/">PICKER</a>
-    <span class="nav-sep">/</span>
-    <span class="nav-label">Calibration</span>
+    <span class="topbar-pill">Calibration</span>
+    <div style="width:10px;"></div>
     <div class="status-dot" id="statusDot"></div>
     <span class="status-label" id="statusLabel">Disconnected</span>
+    <span class="reach-badge ok" id="reachBadge">REACHABLE</span>
   </div>
   <div class="topbar-right">
-    <span class="reach-badge ok" id="reachBadge">REACHABLE</span>
-    <button class="btn btn-green" onclick="sendHome()">Home</button>
-    <button class="btn btn-estop" onclick="sendEstop()">E-STOP</button>
+    <a href="/" class="link-btn">Dashboard</a>
+    <a href="/homing" class="link-btn">Homing Wizard</a>
   </div>
 </header>
 
 <div class="main">
-
-  <!-- Workspace row: Camera + XY pad with Z lever -->
   <div class="workspace-row">
 
     <!-- Camera pane -->
@@ -286,12 +300,12 @@ body {
       </div>
     </div>
 
-    <!-- XY workspace + Z lever pane -->
+    <!-- XY workspace + Z lever -->
     <div class="pane">
       <div class="pane-header">
         <span class="pane-title">
           Workspace&ensp;
-          <span style="color:var(--axis-x)">X</span>&thinsp;/&thinsp;<span style="color:var(--axis-y)">Y</span>
+          <span style="color:var(--axis-y)">Y</span>&thinsp;/&thinsp;<span style="color:var(--axis-x)">X</span>
         </span>
         <span class="pane-coords" id="coordsXY"></span>
       </div>
@@ -299,9 +313,9 @@ body {
         <canvas id="canvasXY"></canvas>
         <div class="z-lever-col">
           <span class="z-lever-label">Z</span>
-          <span class="z-lever-tick">&minus;80</span>
+          <span class="z-lever-tick" id="zTickMax">&minus;140</span>
           <input type="range" class="z-lever" id="sliderZ"
-                 min="-400" max="-80" step="1" value="-250"
+                 min="-400" max="-140" step="1" value="-250"
                  oninput="onZInput(this.value)">
           <span class="z-lever-tick">&minus;400</span>
           <span class="z-lever-val" id="zVal">-250</span>
@@ -311,35 +325,28 @@ body {
     </div>
   </div>
 
-  <!-- Controls row -->
   <div class="controls">
-
-    <!-- Position -->
     <div class="card">
       <div class="card-title">Position</div>
       <div class="pos-group">
         <div class="pos-row">
           <span class="pos-label lx">X</span>
-          <input type="number" class="pos-input" id="inputX" value="0" step="1"
-                 onchange="onPosInput('x')">
+          <input type="number" class="pos-input" id="inputX" value="0" step="1" onchange="onPosInput('x')">
           <span class="pos-unit">mm</span>
         </div>
         <div class="pos-row">
           <span class="pos-label ly">Y</span>
-          <input type="number" class="pos-input" id="inputY" value="0" step="1"
-                 onchange="onPosInput('y')">
+          <input type="number" class="pos-input" id="inputY" value="0" step="1" onchange="onPosInput('y')">
           <span class="pos-unit">mm</span>
         </div>
         <div class="pos-row">
           <span class="pos-label lz">Z</span>
-          <input type="number" class="pos-input" id="inputZ" value="-250" step="1"
-                 onchange="onPosInput('z')">
+          <input type="number" class="pos-input" id="inputZ" value="-250" step="1" onchange="onPosInput('z')">
           <span class="pos-unit">mm</span>
         </div>
       </div>
     </div>
 
-    <!-- Angles -->
     <div class="card">
       <div class="card-title">Computed Angles</div>
       <div class="angles-group">
@@ -361,14 +368,13 @@ body {
       </div>
     </div>
 
-    <!-- Actions -->
     <div class="card">
       <div class="card-title">Actions</div>
       <div class="actions-col">
         <div class="actions-row">
-          <button class="btn btn-accent" onclick="doSend()">Send</button>
+          <button class="btn btn-primary" onclick="doSend()">Send</button>
           <button class="btn" onclick="centerXY()">Center XY</button>
-          <button class="btn btn-green" onclick="sendHome()">Home</button>
+          <button class="btn" onclick="sendHome()">Home</button>
         </div>
         <label style="font-size:.82rem;color:var(--text-dim);display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="checkbox" id="chkLive" checked>
@@ -376,15 +382,12 @@ body {
         </label>
       </div>
     </div>
-
   </div>
 </div>
 
 <script>
-// ================================================================
-//  State
-// ================================================================
 const pos = { x: 0, y: 0, z: -250 };
+let homeXYZ = { x: 0, y: 0, z: -140 };
 let geo = { L: 150, l: 268, Fd: 82.5, Ed: 27.3 };
 let angles = [null, null, null];
 let reachable = true;
@@ -397,9 +400,7 @@ const SQRT3 = Math.sqrt(3);
 const XY_RANGE = 180;
 const SEND_INTERVAL = 60;
 
-// ================================================================
-//  Client-side Inverse Kinematics
-// ================================================================
+// ── Client-side Inverse Kinematics ──────────────────────────────────
 function solveArm(L, l, Fd, Ed, x, y, z) {
   const A2 = l * l - x * x;
   if (A2 < 0) return null;
@@ -432,9 +433,7 @@ function isReachableAt(x, y, z) {
   return r !== null && r.every(a => a >= ANGLE_MIN && a <= ANGLE_MAX);
 }
 
-// ================================================================
-//  Workspace Boundary
-// ================================================================
+// ── Workspace Boundary ──────────────────────────────────────────────
 function computeBoundary(z) {
   const N = 72;
   const outer = [], inner = [];
@@ -474,15 +473,12 @@ function computeBoundary(z) {
   return { outer, inner, annular: !originOk };
 }
 
-function updateBoundary() {
-  boundary = computeBoundary(pos.z);
-}
+function updateBoundary() { boundary = computeBoundary(pos.z); }
 
-// ================================================================
-//  Canvas Setup
-// ================================================================
+// ── Canvas Setup ────────────────────────────────────────────────────
 let canvas, ctx, canvasW, canvasH;
 const MARGIN = 32;
+const MARGIN_R = 64; // extra right margin for Z-lever overlay
 let dragging = false;
 
 function setupCanvas() {
@@ -498,69 +494,70 @@ function setupCanvas() {
 }
 
 function w2c(wx, wy) {
-  const dw = canvasW - 2 * MARGIN, dh = canvasH - 2 * MARGIN;
+  const dw = canvasW - MARGIN - MARGIN_R, dh = canvasH - 2 * MARGIN;
   return {
-    x: MARGIN + (wx + XY_RANGE) / (2 * XY_RANGE) * dw,
-    y: MARGIN + (XY_RANGE - wy) / (2 * XY_RANGE) * dh,
+    x: MARGIN + (XY_RANGE - wy) / (2 * XY_RANGE) * dw,
+    y: MARGIN + (XY_RANGE - wx) / (2 * XY_RANGE) * dh,
   };
 }
 
 function c2w(cx, cy) {
-  const dw = canvasW - 2 * MARGIN, dh = canvasH - 2 * MARGIN;
+  const dw = canvasW - MARGIN - MARGIN_R, dh = canvasH - 2 * MARGIN;
   return {
-    x: clamp((cx - MARGIN) / dw * 2 * XY_RANGE - XY_RANGE, -XY_RANGE, XY_RANGE),
-    y: clamp(XY_RANGE - (cy - MARGIN) / dh * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
+    x: clamp(XY_RANGE - (cy - MARGIN) / dh * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
+    y: clamp(XY_RANGE - (cx - MARGIN) / dw * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
   };
 }
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-// ================================================================
-//  Rendering
-// ================================================================
+// ── Rendering ───────────────────────────────────────────────────────
 const GRID_STEP = 50;
 
 function render() {
   if (!ctx) return;
-  const dw = canvasW - 2 * MARGIN, dh = canvasH - 2 * MARGIN;
-  ctx.clearRect(0, 0, canvasW, canvasH);
+  const dw = canvasW - MARGIN - MARGIN_R, dh = canvasH - 2 * MARGIN;
 
-  // Grid
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
   ctx.lineWidth = 1;
+  // Vertical grid lines — labeled Y (bottom)
   for (let v = -XY_RANGE; v <= XY_RANGE; v += GRID_STEP) {
-    const p = w2c(v, 0);
+    const p = w2c(0, v);
     const isOrigin = Math.abs(v) < 0.5;
-    ctx.strokeStyle = isOrigin ? 'rgba(248,113,113,.5)' : 'rgba(46,50,71,.7)';
+    ctx.strokeStyle = isOrigin ? 'rgba(22,163,74,.35)' : 'rgba(0,0,0,.06)';
     ctx.beginPath(); ctx.moveTo(p.x, MARGIN); ctx.lineTo(p.x, MARGIN + dh); ctx.stroke();
-    ctx.fillStyle = 'rgba(139,143,163,.5)';
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
     ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(v, p.x, canvasH - MARGIN / 4 + 2);
   }
+  // Horizontal grid lines — labeled X (left)
   for (let v = -XY_RANGE; v <= XY_RANGE; v += GRID_STEP) {
-    const p = w2c(0, v);
+    const p = w2c(v, 0);
     const isOrigin = Math.abs(v) < 0.5;
-    ctx.strokeStyle = isOrigin ? 'rgba(74,222,128,.5)' : 'rgba(46,50,71,.7)';
-    ctx.beginPath(); ctx.moveTo(MARGIN, p.y); ctx.lineTo(MARGIN + dw, p.y); ctx.stroke();
-    ctx.fillStyle = 'rgba(139,143,163,.5)';
+    ctx.strokeStyle = isOrigin ? 'rgba(220,38,38,.35)' : 'rgba(0,0,0,.06)';
+    ctx.beginPath(); ctx.moveTo(MARGIN, p.y); ctx.lineTo(canvasW - MARGIN_R, p.y); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
     ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(v, MARGIN - 6, p.y + 3);
   }
 
-  // Axis labels
+  // Y label at bottom, X label on left
   ctx.font = 'bold 12px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'var(--axis-x)';
-  ctx.fillText('X', canvasW / 2, canvasH - 2);
+  ctx.fillStyle = '#16a34a';
+  ctx.fillText('Y', MARGIN + dw / 2, canvasH - 2);
   ctx.save();
   ctx.translate(10, canvasH / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = '#4ade80';
-  ctx.fillText('Y', 0, 0);
+  ctx.fillStyle = '#dc2626';
+  ctx.fillText('X', 0, 0);
   ctx.restore();
 
-  // Workspace boundary fill
   if (boundary.outer.length > 2) {
     ctx.beginPath();
     let p0 = w2c(boundary.outer[0][0], boundary.outer[0][1]);
@@ -582,10 +579,9 @@ function render() {
       ctx.closePath();
     }
 
-    ctx.fillStyle = 'rgba(108,140,255,.06)';
+    ctx.fillStyle = 'rgba(37,99,235,.04)';
     ctx.fill('evenodd');
 
-    // Outer outline
     ctx.beginPath();
     p0 = w2c(boundary.outer[0][0], boundary.outer[0][1]);
     ctx.moveTo(p0.x, p0.y);
@@ -594,11 +590,10 @@ function render() {
       ctx.lineTo(p.x, p.y);
     }
     ctx.closePath();
-    ctx.strokeStyle = 'rgba(108,140,255,.25)';
+    ctx.strokeStyle = 'rgba(37,99,235,.3)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Inner outline (hole)
     if (boundary.annular && boundary.inner.length > 2) {
       ctx.beginPath();
       const pi0 = w2c(boundary.inner[0][0], boundary.inner[0][1]);
@@ -608,7 +603,7 @@ function render() {
         ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
-      ctx.strokeStyle = 'rgba(248,113,113,.3)';
+      ctx.strokeStyle = 'rgba(220,38,38,.3)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
@@ -616,43 +611,37 @@ function render() {
     }
   }
 
-  // Crosshair
   const dot = w2c(pos.x, pos.y);
-  const dotColor = reachable ? '#6c8cff' : '#f87171';
-  const glowColor = reachable ? 'rgba(108,140,255,.4)' : 'rgba(248,113,113,.4)';
+  const dotColor = reachable ? '#2563eb' : '#dc2626';
+  const glowColor = reachable ? 'rgba(37,99,235,.3)' : 'rgba(220,38,38,.3)';
 
   ctx.setLineDash([4, 4]);
   ctx.strokeStyle = dotColor;
-  ctx.globalAlpha = 0.3;
+  ctx.globalAlpha = 0.25;
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(dot.x, MARGIN); ctx.lineTo(dot.x, MARGIN + dh); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(MARGIN, dot.y); ctx.lineTo(MARGIN + dw, dot.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(MARGIN, dot.y); ctx.lineTo(canvasW - MARGIN_R, dot.y); ctx.stroke();
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 
-  // Glow
   const grad = ctx.createRadialGradient(dot.x, dot.y, 0, dot.x, dot.y, 20);
   grad.addColorStop(0, glowColor);
   grad.addColorStop(1, 'transparent');
   ctx.fillStyle = grad;
   ctx.beginPath(); ctx.arc(dot.x, dot.y, 20, 0, Math.PI * 2); ctx.fill();
 
-  // Dot
   ctx.fillStyle = dotColor;
   ctx.beginPath(); ctx.arc(dot.x, dot.y, 6, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.beginPath(); ctx.arc(dot.x, dot.y, 2, 0, Math.PI * 2); ctx.fill();
 
-  // Coordinate display
   document.getElementById('coordsXY').innerHTML =
-    `<span style="color:#f87171">X=${Math.round(pos.x)}</span>&ensp;` +
-    `<span style="color:#4ade80">Y=${Math.round(pos.y)}</span>&ensp;` +
-    `<span style="color:#60a5fa">Z=${Math.round(pos.z)}</span>`;
+    `<span style="color:#dc2626">X=${Math.round(pos.x)}</span>&ensp;` +
+    `<span style="color:#16a34a">Y=${Math.round(pos.y)}</span>&ensp;` +
+    `<span style="color:#2563eb">Z=${Math.round(pos.z)}</span>`;
 }
 
-// ================================================================
-//  Pointer Events (XY canvas drag)
-// ================================================================
+// ── Pointer Events ──────────────────────────────────────────────────
 function getCanvasPos(e) {
   const r = canvas.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -688,9 +677,7 @@ function applyPointer(e) {
   scheduleSend(false);
 }
 
-// ================================================================
-//  Z Lever
-// ================================================================
+// ── Z Lever ─────────────────────────────────────────────────────────
 function onZInput(val) {
   pos.z = parseInt(val);
   document.getElementById('zVal').textContent = pos.z;
@@ -701,15 +688,13 @@ function onZInput(val) {
   scheduleSend(false);
 }
 
-// ================================================================
-//  Position Inputs
-// ================================================================
+// ── Position Inputs ─────────────────────────────────────────────────
 function onPosInput(axis) {
   const el = document.getElementById('input' + axis.toUpperCase());
   let v = parseFloat(el.value);
   if (isNaN(v)) v = 0;
   if (axis === 'z') {
-    v = clamp(v, -400, -80);
+    v = clamp(v, -400, homeXYZ.z);
     pos.z = v;
     document.getElementById('sliderZ').value = v;
     document.getElementById('zVal').textContent = v;
@@ -731,9 +716,7 @@ function syncInputs() {
   document.getElementById('inputZ').value = Math.round(pos.z);
 }
 
-// ================================================================
-//  IK & Angle Display
-// ================================================================
+// ── IK & Angle Display ─────────────────────────────────────────────
 function updateIK() {
   const result = computeIK(pos.x, pos.y, pos.z);
   if (result && result.every(a => a >= ANGLE_MIN && a <= ANGLE_MAX)) {
@@ -782,9 +765,7 @@ function centerXY() {
   scheduleSend(true);
 }
 
-// ================================================================
-//  Server Communication
-// ================================================================
+// ── Server Communication ────────────────────────────────────────────
 let sendTimer = null, lastSendTime = 0;
 
 function scheduleSend(immediate) {
@@ -813,26 +794,21 @@ async function doSend() {
 }
 
 async function sendHome() {
-  pos.x = 0; pos.y = 0; pos.z = -250;
-  document.getElementById('sliderZ').value = -250;
-  document.getElementById('zVal').textContent = '-250';
+  pos.x = homeXYZ.x; pos.y = homeXYZ.y; pos.z = homeXYZ.z;
+  document.getElementById('sliderZ').value = pos.z;
+  document.getElementById('zVal').textContent = Math.round(pos.z);
   syncInputs(); updateBoundary(); updateIK(); render();
   try {
     await fetch('/api/move_xyz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x: 0, y: 0, z: -250 }),
+      body: JSON.stringify({ x: pos.x, y: pos.y, z: pos.z }),
     });
   } catch (e) { console.error(e); }
 }
 
-async function sendEstop() {
-  try { await fetch('/api/estop', { method: 'POST' }); } catch (e) { console.error(e); }
-}
 
-// ================================================================
-//  Camera
-// ================================================================
+// ── Camera ──────────────────────────────────────────────────────────
 async function toggleCamera() {
   const btn = document.getElementById('btnCamera');
   const feed = document.getElementById('cameraFeed');
@@ -898,9 +874,7 @@ async function checkCameraStatus() {
   } catch {}
 }
 
-// ================================================================
-//  Status Polling
-// ================================================================
+// ── Status Polling ──────────────────────────────────────────────────
 async function pollState() {
   try {
     const res = await fetch('/api/state');
@@ -920,9 +894,7 @@ async function pollState() {
   } catch {}
 }
 
-// ================================================================
-//  Geometry Config (load from server)
-// ================================================================
+// ── Geometry Config ─────────────────────────────────────────────────
 async function loadGeometry() {
   try {
     const res = await fetch('/api/ik_config');
@@ -934,20 +906,37 @@ async function loadGeometry() {
   } catch {}
 }
 
-// ================================================================
-//  Resize
-// ================================================================
+async function loadHomePosition() {
+  try {
+    const res = await fetch('/api/home_xyz');
+    const data = await res.json();
+    homeXYZ.x = Math.round(data.x);
+    homeXYZ.y = Math.round(data.y);
+    homeXYZ.z = Math.round(data.z);
+  } catch {}
+}
+
+// ── Resize ──────────────────────────────────────────────────────────
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => { setupCanvas(); render(); }, 100);
 });
 
-// ================================================================
-//  Init
-// ================================================================
+// ── Init ────────────────────────────────────────────────────────────
 async function init() {
   await loadGeometry();
+  await loadHomePosition();
+
+  const zMax = Math.round(homeXYZ.z);
+  document.getElementById('sliderZ').max = zMax;
+  document.getElementById('zTickMax').textContent = zMax;
+
+  pos.x = homeXYZ.x;
+  pos.y = homeXYZ.y;
+  pos.z = homeXYZ.z;
+  document.getElementById('sliderZ').value = pos.z;
+  document.getElementById('zVal').textContent = Math.round(pos.z);
 
   setupCanvas();
   canvas.addEventListener('pointerdown', onPointerDown);
