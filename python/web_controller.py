@@ -635,6 +635,16 @@ def api_camera_feed():
     )
 
 
+@app.route("/api/camera/overlay", methods=["POST"])
+def api_camera_overlay():
+    data = request.json or {}
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Camera not running"}), 400
+        camera.set_overlay(aruco=bool(data.get("aruco", False)))
+    return jsonify({"ok": True})
+
+
 # ---------- Calibration ----------
 
 

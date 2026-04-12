@@ -40,9 +40,12 @@ class RealsenseCamera:
         self._running = False
         self._lock = threading.Lock()
         self._jpeg: bytes | None = None
+        self._color_frame: np.ndarray | None = None
         self._depth_data: np.ndarray | None = None
         self._depth_scale: float = 0.0
         self._intrinsics = None
+        self._overlay_aruco = False
+        self._aruco_detector: cv2.aruco.ArucoDetector | None = None
 
     @property
     def running(self) -> bool:
@@ -75,6 +78,31 @@ class RealsenseCamera:
             self._pipeline = None
         log.info("Camera stopped")
 
+    def set_overlay(self, *, aruco: bool = False) -> None:
+        """Toggle ArUco marker overlay on the MJPEG stream."""
+        self._overlay_aruco = aruco
+        if aruco and self._aruco_detector is None:
+            aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+            params = cv2.aruco.DetectorParameters()
+            self._aruco_detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+
+    def _draw_aruco_overlay(self, img: np.ndarray) -> np.ndarray:
+        """Draw detected ArUco markers onto the frame (in-place)."""
+        if self._aruco_detector is None:
+            return img
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        corners_list, ids, _ = self._aruco_detector.detectMarkers(gray)
+        if ids is None:
+            return img
+        for corners, marker_id in zip(corners_list, ids.ravel()):
+            pts = corners[0].astype(np.int32)
+            cv2.polylines(img, [pts], True, (0, 255, 0), 2)
+            cx, cy = int(pts[:, 0].mean()), int(pts[:, 1].mean())
+            cv2.putText(img, f"ID {marker_id}", (cx - 20, cy - 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.drawMarker(img, (cx, cy), (0, 255, 0), cv2.MARKER_CROSS, 10, 1)
+        return img
+
     def _loop(self) -> None:
         while self._running and self._pipeline:
             try:
@@ -90,9 +118,13 @@ class RealsenseCamera:
                     depth.profile.as_video_stream_profile().intrinsics
                 )
                 img = np.asanyarray(color.get_data())
-                _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                display = img.copy()
+                if self._overlay_aruco:
+                    self._draw_aruco_overlay(display)
+                _, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 with self._lock:
                     self._jpeg = buf.tobytes()
+                    self._color_frame = img.copy()
                     self._depth_data = np.asanyarray(depth.get_data())
             except Exception as exc:
                 log.debug("Capture error: %s", exc)
@@ -113,6 +145,41 @@ class RealsenseCamera:
                     b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
             time.sleep(dt)
+
+    def get_color_frame(self) -> np.ndarray | None:
+        """Return the latest color frame as a BGR numpy array, or None."""
+        with self._lock:
+            return self._color_frame.copy() if self._color_frame is not None else None
+
+    def detect_aruco(
+        self, dictionary_name: str = "DICT_4X4_50"
+    ) -> list[dict]:
+        """Detect ArUco markers in the current frame.
+
+        Returns a list of dicts: [{"id": int, "center": (u, v), "corners": [(u,v),...]}]
+        """
+        frame = self.get_color_frame()
+        if frame is None:
+            return []
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        dict_id = getattr(cv2.aruco, dictionary_name, cv2.aruco.DICT_4X4_50)
+        aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
+        params = cv2.aruco.DetectorParameters()
+        detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+        corners_list, ids, _ = detector.detectMarkers(gray)
+        if ids is None:
+            return []
+        results = []
+        for corners, marker_id in zip(corners_list, ids.ravel()):
+            pts = corners[0]  # (4, 2)
+            cx = float(pts[:, 0].mean())
+            cy = float(pts[:, 1].mean())
+            results.append({
+                "id": int(marker_id),
+                "center": (cx, cy),
+                "corners": [(float(p[0]), float(p[1])) for p in pts],
+            })
+        return results
 
     def deproject(self, u: int, v: int) -> tuple[float, float, float] | None:
         """Pixel (u, v) -> 3D point in camera frame (mm). None if no depth."""

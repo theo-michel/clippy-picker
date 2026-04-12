@@ -1,0 +1,219 @@
+<!-- Homing Wizard Modal -->
+<div class="modal-overlay" id="homingModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Homing Wizard</span>
+      <button class="modal-close" onclick="closeHomingWizard()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="step active" id="wizStep1">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <div class="step-title">Connect</div>
+        </div>
+        <div class="step-desc">Select the ESP32 serial port and connect to the robot.</div>
+        <div class="port-row">
+          <select id="wizPortSelect"><option value="">Scanning...</option></select>
+          <button class="btn btn-sm" onclick="wizRefreshPorts()">Refresh</button>
+          <button class="btn btn-primary btn-sm" id="wizBtnConnect" onclick="wizDoConnect()">Connect</button>
+        </div>
+        <div class="status-msg" id="wizStep1Status"></div>
+      </div>
+      <div class="step" id="wizStep2">
+        <div class="step-header">
+          <div class="step-number">2</div>
+          <div class="step-title">Home Gantry</div>
+        </div>
+        <div class="step-desc">
+          The gantry will move toward the endstop switch, zero its position,
+          and back off slightly. Keep the rail clear.
+        </div>
+        <button class="btn btn-primary" id="wizBtnGantryHome" onclick="wizDoGantryHome()">Start Gantry Home</button>
+        <div class="status-msg" id="wizStep2Status"></div>
+      </div>
+      <div class="step" id="wizStep3">
+        <div class="step-header">
+          <div class="step-number">3</div>
+          <div class="step-title">Zero Delta at Mechanical Limit</div>
+        </div>
+        <div class="step-desc">
+          Delta motors are now <strong>released</strong> — move all three arms to the
+          <strong>mechanical stop</strong> (highest position), then press the button to
+          lock motors and set the zero reference.
+        </div>
+        <div class="wiz-pos-grid">
+          <div class="wiz-pos-cell"><div class="label">Motor 1</div><div class="value" id="wizPosD1">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">Motor 2</div><div class="value" id="wizPosD2">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">Motor 3</div><div class="value" id="wizPosD3">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">Gantry</div><div class="value" id="wizPosGx">--</div></div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-home" id="wizBtnSetZero" onclick="wizDoSetDeltaZero()">Zero at Limit</button>
+        </div>
+        <div class="status-msg" id="wizStep3Status"></div>
+      </div>
+      <div class="step" id="wizStep4">
+        <div class="step-header">
+          <div class="step-number">4</div>
+          <div class="step-title">Move to Home Position</div>
+        </div>
+        <div class="step-desc">
+          Move all three arms to the safe <strong>home</strong> position
+          (15&deg; above horizontal). This backs off from the hard stop and becomes
+          the operational starting pose.
+        </div>
+        <button class="btn btn-home" id="wizBtnMoveHome" onclick="wizDoMoveToHome()">Move to Home</button>
+        <div class="status-msg" id="wizStep4Status"></div>
+      </div>
+      <div class="done-banner" id="wizDoneBanner">
+        <h3>Homing Complete</h3>
+        <p>Gantry zeroed at endstop. Delta zeroed at mechanical limit and parked at home. Ready to operate.</p>
+        <button class="btn btn-primary" onclick="closeHomingWizard()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let wizPollTimer = null;
+
+function openHomingWizard() {
+  wizResetState();
+  $('homingModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  wizInit();
+}
+function closeHomingWizard() {
+  $('homingModal').classList.remove('open');
+  document.body.style.overflow = '';
+  if (wizPollTimer) { clearInterval(wizPollTimer); wizPollTimer = null; }
+}
+function wizResetState() {
+  for (let i = 1; i <= 4; i++) {
+    const el = $('wizStep' + i); el.classList.remove('active', 'done');
+    if (i === 1) el.classList.add('active');
+  }
+  $('wizDoneBanner').classList.remove('show');
+  $('wizBtnConnect').disabled = false;
+  $('wizBtnGantryHome').disabled = false;
+  $('wizBtnSetZero').disabled = false;
+  $('wizBtnMoveHome').disabled = false;
+  ['wizStep1Status','wizStep2Status','wizStep3Status','wizStep4Status'].forEach(id => {
+    $(id).textContent = ''; $(id).className = 'status-msg';
+  });
+}
+function wizSetStatus(id, msg, cls) {
+  const el = $(id); el.textContent = msg;
+  el.className = 'status-msg' + (cls ? ' ' + cls : '');
+}
+function wizActivateStep(num) {
+  for (let i = 1; i <= 4; i++) {
+    const el = $('wizStep' + i); el.classList.remove('active', 'done');
+    if (i < num) el.classList.add('done');
+    else if (i === num) el.classList.add('active');
+  }
+}
+async function wizRefreshPorts(preselectPort) {
+  try {
+    const ports = await apiGet('/api/ports');
+    const sel = $('wizPortSelect'), prev = sel.value;
+    sel.innerHTML = '';
+    if (!ports.length) { sel.innerHTML = '<option value="">No ports found</option>'; return; }
+    let usbDev = null;
+    ports.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.device; opt.textContent = p.device + ' \u2014 ' + p.description;
+      sel.appendChild(opt);
+      if (p.device.includes('usbserial') || p.device.includes('ttyUSB')) usbDev = p.device;
+    });
+    if (preselectPort && [...sel.options].some(o => o.value === preselectPort)) sel.value = preselectPort;
+    else if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    else if (usbDev) sel.value = usbDev;
+  } catch {}
+}
+async function wizDoConnect() {
+  const port = $('wizPortSelect').value;
+  if (!port) { wizSetStatus('wizStep1Status', 'Select a port first.', 'err'); return; }
+  $('wizBtnConnect').disabled = true;
+  wizSetStatus('wizStep1Status', 'Connecting...', 'busy');
+  try {
+    const res = await apiPost('/api/connect', { port });
+    if (res.ok) { wizSetStatus('wizStep1Status', 'Connected.', 'ok'); wizActivateStep(2); }
+    else { wizSetStatus('wizStep1Status', res.message || 'Failed.', 'err'); $('wizBtnConnect').disabled = false; }
+  } catch (e) { wizSetStatus('wizStep1Status', 'Error: ' + e.message, 'err'); $('wizBtnConnect').disabled = false; }
+}
+async function wizDoGantryHome() {
+  $('wizBtnGantryHome').disabled = true;
+  wizSetStatus('wizStep2Status', 'Homing gantry...', 'busy');
+  try {
+    const res = await apiPost('/api/raw', { command: 'GANTRY_HOME' });
+    if (!res.ok) { wizSetStatus('wizStep2Status', 'Error: ' + (res.response || 'unknown'), 'err'); $('wizBtnGantryHome').disabled = false; return; }
+    await wizWaitIdle('wizStep2Status', 'Gantry moving to endstop...');
+    wizSetStatus('wizStep2Status', 'Gantry homed.', 'ok');
+    await apiPost('/api/raw', { command: 'DELTA_DISABLE' });
+    wizActivateStep(3); wizStartPositionPolling();
+  } catch (e) { wizSetStatus('wizStep2Status', 'Error: ' + e.message, 'err'); $('wizBtnGantryHome').disabled = false; }
+}
+async function wizWaitIdle(statusId, msg) {
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 250));
+    const st = await apiGet('/api/state');
+    wizSetStatus(statusId, msg, 'busy');
+    if (!st.moving) return;
+  }
+  throw new Error('Timed out waiting for motion to complete.');
+}
+function wizStartPositionPolling() {
+  if (wizPollTimer) clearInterval(wizPollTimer);
+  wizPollTimer = setInterval(async () => {
+    try {
+      const st = await apiGet('/api/state');
+      $('wizPosD1').textContent = st.positions[0].toFixed(1) + '\u00B0';
+      $('wizPosD2').textContent = st.positions[1].toFixed(1) + '\u00B0';
+      $('wizPosD3').textContent = st.positions[2].toFixed(1) + '\u00B0';
+      $('wizPosGx').textContent = st.gantry_mm.toFixed(1) + ' mm';
+    } catch {}
+  }, 300);
+}
+async function wizDoSetDeltaZero() {
+  $('wizBtnSetZero').disabled = true;
+  wizSetStatus('wizStep3Status', 'Setting zero at mechanical limit...', 'busy');
+  try {
+    await apiPost('/api/raw', { command: 'DELTA_ENABLE' });
+    const res = await apiPost('/api/zero');
+    if (!res.ok) { wizSetStatus('wizStep3Status', 'ZERO failed: ' + (res.response || ''), 'err'); $('wizBtnSetZero').disabled = false; return; }
+    wizSetStatus('wizStep3Status', 'Zeroed at mechanical limit.', 'ok');
+    if (wizPollTimer) { clearInterval(wizPollTimer); wizPollTimer = null; }
+    wizActivateStep(4);
+  } catch (e) { wizSetStatus('wizStep3Status', 'Error: ' + e.message, 'err'); $('wizBtnSetZero').disabled = false; }
+}
+async function wizDoMoveToHome() {
+  $('wizBtnMoveHome').disabled = true;
+  wizSetStatus('wizStep4Status', 'Moving to home position...', 'busy');
+  try {
+    const home = await apiGet('/api/delta_home');
+    const res = await apiPost('/api/move', { d1: home.delta_angle_1, d2: home.delta_angle_2, d3: home.delta_angle_3 });
+    if (!res.ok) { wizSetStatus('wizStep4Status', 'Move failed: ' + (res.response || ''), 'err'); $('wizBtnMoveHome').disabled = false; return; }
+    await wizWaitIdle('wizStep4Status', 'Moving to home position...');
+    wizSetStatus('wizStep4Status', 'At home position.', 'ok');
+    $('wizStep4').classList.remove('active'); $('wizStep4').classList.add('done');
+    $('wizDoneBanner').classList.add('show');
+  } catch (e) { wizSetStatus('wizStep4Status', 'Error: ' + e.message, 'err'); $('wizBtnMoveHome').disabled = false; }
+}
+async function wizInit() {
+  try {
+    const st = await apiGet('/api/state');
+    if (st.connected && st.port) {
+      await wizRefreshPorts(st.port);
+      wizSetStatus('wizStep1Status', 'Already connected to ' + st.port + '.', 'ok');
+      wizActivateStep(2); return;
+    }
+    if (st.port) knownPort = st.port;
+  } catch {}
+  await wizRefreshPorts(knownPort);
+}
+
+window.addEventListener('load', () => {
+  $('homingModal').addEventListener('click', e => { if (e.target === $('homingModal')) closeHomingWizard(); });
+});
+</script>

@@ -75,6 +75,15 @@ DELTA_HOME_ANGLE_3 = -15.0
 # Feetech position for "gripper home" (fully open). Should match firmware GRIP_OPEN_POS.
 GRIPPER_HOME_POSITION = 2900
 
+# ── Calibration marker offset ──────────────────────────────────────────────
+#
+# Offset from the end-effector frame origin to the ArUco marker center,
+# expressed in the delta frame (mm).  The EE platform is ~10 mm thick;
+# its frame origin is at the centre (5 mm from top surface).  A marker
+# taped on top sits 5 mm above the origin, i.e. at z = -5 in the
+# z-down convention.  Adjust X/Y if the marker is off-centre.
+MARKER_OFFSET_FROM_EE = (0.0, 0.0, -5.0)  # (dx, dy, dz) in mm
+
 # ── Home position container ─────────────────────────────────────────────────
 
 

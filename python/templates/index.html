@@ -1,52 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Picker – Dashboard</title>
-<style>
-:root {
-  --bg:           #f5f5f7;
-  --bg-card:      #ffffff;
-  --bg-input:     #f3f4f6;
-  --bg-hover:     #e5e7eb;
-  --border:       #d1d5db;
-  --border-subtle:#e5e7eb;
-  --text:         #111827;
-  --text-dim:     #6b7280;
-  --accent:       #2563eb;
-  --green:        #16a34a;
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picker – Dashboard</title>
+  <style>
+    :root {
+      --bg:           #f5f5f7;
+      --bg-card:      #ffffff;
+      --bg-input:     #f3f4f6;
+      --bg-hover:     #e5e7eb;
+      --border:       #d1d5db;
+      --border-subtle:#e5e7eb;
+      --text:         #111827;
+      --text-dim:     #6b7280;
+      --accent:       #2563eb;
+      --green:        #16a34a;
   --green-dim:    rgba(22,163,74,0.12);
-  --red:          #dc2626;
+      --red:          #dc2626;
   --orange:       #f97316;
-  --radius:       10px;
-  --shadow:       0 8px 24px rgba(15,23,42,0.08);
-  --font:         system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --radius:       10px;
+      --shadow:       0 8px 24px rgba(15,23,42,0.08);
+      --font:         system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono:         "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --axis-x:       #dc2626;
   --axis-y:       #16a34a;
   --axis-z:       #2563eb;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 15px; }
-body {
-  font-family: var(--font);
-  background: radial-gradient(circle at top left, #e5edff, #f9fafb 52%, #f5f5f7 100%);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: var(--font);
+      background: radial-gradient(circle at top left, #e5edff, #f9fafb 52%, #f5f5f7 100%);
   color: var(--text); min-height: 100vh; line-height: 1.5; overflow-x: hidden;
-}
+    }
 
 /* ── Topbar ────────────────────────────────────────────────────── */
-.topbar {
+    .topbar {
   position: sticky; top: 0; z-index: 40;
   backdrop-filter: blur(18px); background: rgba(249,250,251,0.9);
   border-bottom: 1px solid rgba(209,213,219,0.7);
-  padding: 10px 20px;
+      padding: 10px 20px;
   display: flex; align-items: center; justify-content: space-between;
 }
 .topbar-left  { display: flex; align-items: center; gap: 10px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 .logo { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #111827; }
-.status-dot {
+    .status-dot {
   width: 9px; height: 9px; border-radius: 999px;
   background: #9ca3af; box-shadow: 0 0 0 1px rgba(156,163,175,0.5);
 }
@@ -73,7 +73,7 @@ body {
 .btn-sm { padding: 5px 12px; font-size: .78rem; }
 
 /* ── Layout ────────────────────────────────────────────────────── */
-.main { padding: 16px 20px; }
+.main { padding: 16px 20px; transition: margin-left .25s ease; }
 .workspace-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
 
 /* ── Pane ──────────────────────────────────────────────────────── */
@@ -238,6 +238,70 @@ body {
 .cmd-status.ok  { border-left: 3px solid var(--green); color: var(--text); }
 .cmd-status.err { border-left: 3px solid var(--red); color: var(--red); }
 
+/* ── Calibration Sidebar ──────────────────────────────────────── */
+.calib-sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0; width: 340px;
+  z-index: 50; background: var(--bg);
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 24px rgba(0,0,0,0.08);
+  transform: translateX(-100%); transition: transform .25s ease;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.calib-sidebar.open { transform: translateX(0); }
+.main.sidebar-open { margin-left: 340px; }
+.calib-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-card); flex-shrink: 0;
+}
+.calib-title { font-size: .9rem; font-weight: 700; }
+.calib-body {
+  flex: 1; overflow-y: auto; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.calib-divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
+.calib-status-row { display: flex; gap: 14px; }
+.calib-status-item { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--text-dim); }
+.calib-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #9ca3af;
+  box-shadow: 0 0 0 1px rgba(156,163,175,0.4);
+}
+.calib-status-dot.on { background: var(--green); box-shadow: 0 0 0 1px rgba(34,197,94,0.4), 0 0 8px rgba(34,197,94,0.4); }
+.calib-capture-btn { width: 100%; padding: 10px; font-size: .9rem; }
+.calib-point-count { font-size: .8rem; color: var(--text-dim); text-align: center; }
+.calib-point-count span:first-child { font-weight: 700; color: var(--text); }
+.calib-point-hint { font-size: .72rem; }
+.calib-guidance { font-size: .75rem; color: var(--text-dim); line-height: 1.5; }
+.calib-table-wrap { max-height: 200px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.calib-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
+.calib-table th {
+  position: sticky; top: 0; background: var(--bg-input); padding: 5px 6px;
+  text-align: left; font-weight: 600; color: var(--text-dim);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.calib-table td { padding: 4px 6px; border-bottom: 1px solid var(--border-subtle); }
+.calib-table .mono { font-family: var(--mono); font-size: .68rem; }
+.calib-remove-btn {
+  background: none; border: none; color: var(--red); cursor: pointer;
+  font-size: .9rem; padding: 0 4px; opacity: .6;
+}
+.calib-remove-btn:hover { opacity: 1; }
+.calib-rmsd-row { display: flex; align-items: center; justify-content: space-between; }
+.calib-label { font-size: .74rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+.calib-rmsd-badge {
+  padding: 3px 10px; border-radius: 999px; font-family: var(--mono);
+  font-size: .78rem; font-weight: 700;
+}
+.calib-rmsd-badge.good { background: var(--green-dim); color: var(--green); }
+.calib-rmsd-badge.warn { background: rgba(249,115,22,0.1); color: var(--orange); }
+.calib-rmsd-badge.bad  { background: rgba(220,38,38,0.08); color: var(--red); }
+.calib-matrix { font-family: var(--mono); font-size: .68rem; line-height: 1.6; }
+.calib-matrix-row { white-space: pre; }
+.calib-actions { display: flex; gap: 8px; }
+.calib-actions .btn { flex: 1; }
+.calib-btn-clear { color: var(--red); border-color: rgba(220,38,38,0.3); }
+.calib-btn-clear:hover { background: rgba(220,38,38,0.06); border-color: var(--red); }
+
 /* ── Modal ─────────────────────────────────────────────────────── */
 .modal-overlay {
   display: none; position: fixed; inset: 0; z-index: 100;
@@ -332,23 +396,24 @@ body {
 @media (max-width: 640px) {
   .controls { grid-template-columns: 1fr; }
   .wiz-pos-grid { grid-template-columns: repeat(2,1fr); }
-}
-</style>
+    }
+  </style>
 </head>
 <body>
 
-<header class="topbar">
-  <div class="topbar-left">
+  <header class="topbar">
+    <div class="topbar-left">
     <button class="btn btn-primary btn-sm" onclick="openHomingWizard()">Homing Wizard</button>
-    <span class="logo">PICKER</span>
+    <button class="btn btn-sm" onclick="openCalibSidebar()">Calibrate</button>
+      <span class="logo">PICKER</span>
     <div style="width:6px;"></div>
-    <div class="status-dot" id="statusDot"></div>
-    <span class="status-label" id="statusLabel">Disconnected</span>
-  </div>
-  <div class="topbar-right">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">Disconnected</span>
+    </div>
+    <div class="topbar-right">
     <button class="btn btn-sm" id="btnDisconnect" onclick="disconnect()" style="display:none;">Disconnect</button>
-  </div>
-</header>
+    </div>
+  </header>
 
 <div class="main">
   <div class="workspace-row">
@@ -365,10 +430,10 @@ body {
             <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9A2.25 2.25 0 0013.5 5.25h-9A2.25 2.25 0 002.25 7.5v9A2.25 2.25 0 004.5 18.75z"/>
           </svg>
           <span id="cameraMsg">Camera off</span>
-        </div>
+      </div>
         <img id="cameraFeed" style="display:none;" alt="Camera Feed">
       </div>
-    </div>
+        </div>
 
     <!-- Workspace pane -->
     <div class="pane">
@@ -390,34 +455,34 @@ body {
           <span class="z-lever-tick">400</span>
           <span class="z-lever-val" id="zVal">250</span>
           <span class="z-lever-tick">mm</span>
+          </div>
         </div>
-      </div>
       <div class="pane-gantry">
         <span class="pane-gantry-label">Gantry</span>
-        <input type="range" id="sliderGx" min="0" max="625" step="1"
-               oninput="onGantrySliderInput()" onchange="onGantrySliderInput()">
+          <input type="range" id="sliderGx" min="0" max="625" step="1"
+                 oninput="onGantrySliderInput()" onchange="onGantrySliderInput()">
         <input class="gantry-input" id="inputGx" type="number" min="0" max="625" step="1"
-               value="0" onchange="onGantryInputChange()">
+                   value="0" onchange="onGantryInputChange()">
         <span class="gantry-unit">mm</span>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
 
   <div class="controls">
     <!-- Gripper -->
     <div class="card">
-      <div class="card-title">Gripper</div>
+        <div class="card-title">Gripper</div>
       <div class="grip-slider-row">
         <input type="range" id="sliderGrip" min="1428" max="2900" step="1" value="2900"
-               oninput="onGripSliderInput()" onchange="onGripSliderInput()" style="direction:rtl;">
+                 oninput="onGripSliderInput()" onchange="onGripSliderInput()" style="direction:rtl;">
         <input class="grip-input" id="inputGrip" type="number" min="1428" max="2900" step="1"
-               value="2900" onchange="onGripInputChange()">
-      </div>
+                   value="2900" onchange="onGripInputChange()">
+          </div>
       <div class="grip-actions">
         <button class="btn btn-primary btn-sm" onclick="gripOpen()">Open</button>
         <button class="btn btn-ghost btn-sm" onclick="gripClose()">Close</button>
+        </div>
       </div>
-    </div>
 
     <!-- Computed Angles -->
     <div class="card">
@@ -427,7 +492,7 @@ body {
           <span class="angle-label">&theta;1</span>
           <div class="angle-bar-track"><div class="angle-bar-fill" id="bar1"></div></div>
           <span class="angle-value" id="angle1">&mdash;</span>
-        </div>
+      </div>
         <div class="angle-row">
           <span class="angle-label">&theta;2</span>
           <div class="angle-bar-track"><div class="angle-bar-fill" id="bar2"></div></div>
@@ -443,104 +508,33 @@ body {
 
     <!-- Actions -->
     <div class="card">
-      <div class="card-title">Actions</div>
+        <div class="card-title">Actions</div>
       <div class="actions-col">
-        <div class="actions-row">
+      <div class="actions-row">
           <button class="btn btn-primary" onclick="sendHome()">Home</button>
           <button class="btn" onclick="centerXY()">Center</button>
-          <button class="btn" id="btnRect" onclick="runRectangle()">Rectangle Sweep</button>
-        </div>
+        <button class="btn" id="btnRect" onclick="runRectangle()">Rectangle Sweep</button>
+      </div>
       </div>
     </div>
   </div>
 
-  <div id="cmdStatus" class="cmd-status" style="display:none;"></div>
+    <div id="cmdStatus" class="cmd-status" style="display:none;"></div>
 </div>
 
-<!-- Homing Wizard Modal -->
-<div class="modal-overlay" id="homingModal">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">Homing Wizard</span>
-      <button class="modal-close" onclick="closeHomingWizard()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="step active" id="wizStep1">
-        <div class="step-header">
-          <div class="step-number">1</div>
-          <div class="step-title">Connect</div>
-        </div>
-        <div class="step-desc">Select the ESP32 serial port and connect to the robot.</div>
-        <div class="port-row">
-          <select id="wizPortSelect"><option value="">Scanning...</option></select>
-          <button class="btn btn-sm" onclick="wizRefreshPorts()">Refresh</button>
-          <button class="btn btn-primary btn-sm" id="wizBtnConnect" onclick="wizDoConnect()">Connect</button>
-        </div>
-        <div class="status-msg" id="wizStep1Status"></div>
-      </div>
-      <div class="step" id="wizStep2">
-        <div class="step-header">
-          <div class="step-number">2</div>
-          <div class="step-title">Home Gantry</div>
-        </div>
-        <div class="step-desc">
-          The gantry will move toward the endstop switch, zero its position,
-          and back off slightly. Keep the rail clear.
-        </div>
-        <button class="btn btn-primary" id="wizBtnGantryHome" onclick="wizDoGantryHome()">Start Gantry Home</button>
-        <div class="status-msg" id="wizStep2Status"></div>
-      </div>
-      <div class="step" id="wizStep3">
-        <div class="step-header">
-          <div class="step-number">3</div>
-          <div class="step-title">Zero Delta at Mechanical Limit</div>
-        </div>
-        <div class="step-desc">
-          Delta motors are now <strong>released</strong> — move all three arms to the
-          <strong>mechanical stop</strong> (highest position), then press the button to
-          lock motors and set the zero reference.
-        </div>
-        <div class="wiz-pos-grid">
-          <div class="wiz-pos-cell"><div class="label">Motor 1</div><div class="value" id="wizPosD1">--</div></div>
-          <div class="wiz-pos-cell"><div class="label">Motor 2</div><div class="value" id="wizPosD2">--</div></div>
-          <div class="wiz-pos-cell"><div class="label">Motor 3</div><div class="value" id="wizPosD3">--</div></div>
-          <div class="wiz-pos-cell"><div class="label">Gantry</div><div class="value" id="wizPosGx">--</div></div>
-        </div>
-        <div style="margin-top:12px;">
-          <button class="btn btn-home" id="wizBtnSetZero" onclick="wizDoSetDeltaZero()">Zero at Limit</button>
-        </div>
-        <div class="status-msg" id="wizStep3Status"></div>
-      </div>
-      <div class="step" id="wizStep4">
-        <div class="step-header">
-          <div class="step-number">4</div>
-          <div class="step-title">Move to Home Position</div>
-        </div>
-        <div class="step-desc">
-          Move all three arms to the safe <strong>home</strong> position
-          (15&deg; above horizontal). This backs off from the hard stop and becomes
-          the operational starting pose.
-        </div>
-        <button class="btn btn-home" id="wizBtnMoveHome" onclick="wizDoMoveToHome()">Move to Home</button>
-        <div class="status-msg" id="wizStep4Status"></div>
-      </div>
-      <div class="done-banner" id="wizDoneBanner">
-        <h3>Homing Complete</h3>
-        <p>Gantry zeroed at endstop. Delta zeroed at mechanical limit and parked at home. Ready to operate.</p>
-        <button class="btn btn-primary" onclick="closeHomingWizard()">Done</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-const $ = id => document.getElementById(id);
-
+  <script>
+    const $ = id => document.getElementById(id);
 async function apiGet(path)  { return (await fetch(path)).json(); }
 async function apiPost(path, body = {}) {
   return (await fetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) })).json();
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  </script>
+
+{% include '_calibration_sidebar.html' %}
+{% include '_homing_modal.html' %}
+
+  <script>
 
 // ── IK state ────────────────────────────────────────────────────────
 const pos = { x: 0, y: 0, z: 250 };
@@ -803,210 +797,71 @@ async function sendHome() {
 }
 
 // ── Command Feedback ────────────────────────────────────────────────
-let cmdFadeTimer = null;
-function showCmd(label, response, ok) {
+    let cmdFadeTimer = null;
+    function showCmd(label, response, ok) {
   const el = $('cmdStatus');
   el.style.display = 'block';
   el.className = 'cmd-status ' + (ok ? 'ok' : 'err');
   const ts = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  el.textContent = `[${ts}] ${label}  →  ${response}`;
-  clearTimeout(cmdFadeTimer);
+      el.textContent = `[${ts}] ${label}  →  ${response}`;
+      clearTimeout(cmdFadeTimer);
   cmdFadeTimer = setTimeout(() => { el.style.opacity = '0.5'; }, 4000);
   el.style.opacity = '1';
-}
+    }
 
-async function cmd(path, body, label) {
-  try {
-    const res = await apiPost(path, body);
+    async function cmd(path, body, label) {
+      try {
+        const res = await apiPost(path, body);
     showCmd(label || path, res.response || res.message || 'OK', res.ok);
-    return res;
+        return res;
   } catch (e) { showCmd(label || path, e.message, false); return { ok: false }; }
-}
+    }
 
 // ── Connection ──────────────────────────────────────────────────────
-let knownPort = null;
+    let knownPort = null;
 async function disconnect() { try { await apiPost('/api/disconnect'); } finally { updateConnUI(false); } }
 function updateConnUI(connected) { $('btnDisconnect').style.display = connected ? '' : 'none'; }
 
-// ── Homing Wizard Modal ─────────────────────────────────────────────
-let wizPollTimer = null;
-
-function openHomingWizard() {
-  wizResetState();
-  $('homingModal').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  wizInit();
-}
-function closeHomingWizard() {
-  $('homingModal').classList.remove('open');
-  document.body.style.overflow = '';
-  if (wizPollTimer) { clearInterval(wizPollTimer); wizPollTimer = null; }
-}
-function wizResetState() {
-  for (let i = 1; i <= 4; i++) {
-    const el = $('wizStep' + i); el.classList.remove('active', 'done');
-    if (i === 1) el.classList.add('active');
-  }
-  $('wizDoneBanner').classList.remove('show');
-  $('wizBtnConnect').disabled = false;
-  $('wizBtnGantryHome').disabled = false;
-  $('wizBtnSetZero').disabled = false;
-  $('wizBtnMoveHome').disabled = false;
-  ['wizStep1Status','wizStep2Status','wizStep3Status','wizStep4Status'].forEach(id => {
-    $(id).textContent = ''; $(id).className = 'status-msg';
-  });
-}
-function wizSetStatus(id, msg, cls) {
-  const el = $(id); el.textContent = msg;
-  el.className = 'status-msg' + (cls ? ' ' + cls : '');
-}
-function wizActivateStep(num) {
-  for (let i = 1; i <= 4; i++) {
-    const el = $('wizStep' + i); el.classList.remove('active', 'done');
-    if (i < num) el.classList.add('done');
-    else if (i === num) el.classList.add('active');
-  }
-}
-async function wizRefreshPorts(preselectPort) {
-  try {
-    const ports = await apiGet('/api/ports');
-    const sel = $('wizPortSelect'), prev = sel.value;
-    sel.innerHTML = '';
-    if (!ports.length) { sel.innerHTML = '<option value="">No ports found</option>'; return; }
-    let usbDev = null;
-    ports.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.device; opt.textContent = p.device + ' \u2014 ' + p.description;
-      sel.appendChild(opt);
-      if (p.device.includes('usbserial') || p.device.includes('ttyUSB')) usbDev = p.device;
-    });
-    if (preselectPort && [...sel.options].some(o => o.value === preselectPort)) sel.value = preselectPort;
-    else if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-    else if (usbDev) sel.value = usbDev;
-  } catch {}
-}
-async function wizDoConnect() {
-  const port = $('wizPortSelect').value;
-  if (!port) { wizSetStatus('wizStep1Status', 'Select a port first.', 'err'); return; }
-  $('wizBtnConnect').disabled = true;
-  wizSetStatus('wizStep1Status', 'Connecting...', 'busy');
-  try {
-    const res = await apiPost('/api/connect', { port });
-    if (res.ok) { wizSetStatus('wizStep1Status', 'Connected.', 'ok'); wizActivateStep(2); }
-    else { wizSetStatus('wizStep1Status', res.message || 'Failed.', 'err'); $('wizBtnConnect').disabled = false; }
-  } catch (e) { wizSetStatus('wizStep1Status', 'Error: ' + e.message, 'err'); $('wizBtnConnect').disabled = false; }
-}
-async function wizDoGantryHome() {
-  $('wizBtnGantryHome').disabled = true;
-  wizSetStatus('wizStep2Status', 'Homing gantry...', 'busy');
-  try {
-    const res = await apiPost('/api/raw', { command: 'GANTRY_HOME' });
-    if (!res.ok) { wizSetStatus('wizStep2Status', 'Error: ' + (res.response || 'unknown'), 'err'); $('wizBtnGantryHome').disabled = false; return; }
-    await wizWaitIdle('wizStep2Status', 'Gantry moving to endstop...');
-    wizSetStatus('wizStep2Status', 'Gantry homed.', 'ok');
-    await apiPost('/api/raw', { command: 'DELTA_DISABLE' });
-    wizActivateStep(3); wizStartPositionPolling();
-  } catch (e) { wizSetStatus('wizStep2Status', 'Error: ' + e.message, 'err'); $('wizBtnGantryHome').disabled = false; }
-}
-async function wizWaitIdle(statusId, msg) {
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 250));
-    const st = await apiGet('/api/state');
-    wizSetStatus(statusId, msg, 'busy');
-    if (!st.moving) return;
-  }
-  throw new Error('Timed out waiting for motion to complete.');
-}
-function wizStartPositionPolling() {
-  if (wizPollTimer) clearInterval(wizPollTimer);
-  wizPollTimer = setInterval(async () => {
-    try {
-      const st = await apiGet('/api/state');
-      $('wizPosD1').textContent = st.positions[0].toFixed(1) + '\u00B0';
-      $('wizPosD2').textContent = st.positions[1].toFixed(1) + '\u00B0';
-      $('wizPosD3').textContent = st.positions[2].toFixed(1) + '\u00B0';
-      $('wizPosGx').textContent = st.gantry_mm.toFixed(1) + ' mm';
-    } catch {}
-  }, 300);
-}
-async function wizDoSetDeltaZero() {
-  $('wizBtnSetZero').disabled = true;
-  wizSetStatus('wizStep3Status', 'Setting zero at mechanical limit...', 'busy');
-  try {
-    await apiPost('/api/raw', { command: 'DELTA_ENABLE' });
-    const res = await apiPost('/api/zero');
-    if (!res.ok) { wizSetStatus('wizStep3Status', 'ZERO failed: ' + (res.response || ''), 'err'); $('wizBtnSetZero').disabled = false; return; }
-    wizSetStatus('wizStep3Status', 'Zeroed at mechanical limit.', 'ok');
-    if (wizPollTimer) { clearInterval(wizPollTimer); wizPollTimer = null; }
-    wizActivateStep(4);
-  } catch (e) { wizSetStatus('wizStep3Status', 'Error: ' + e.message, 'err'); $('wizBtnSetZero').disabled = false; }
-}
-async function wizDoMoveToHome() {
-  $('wizBtnMoveHome').disabled = true;
-  wizSetStatus('wizStep4Status', 'Moving to home position...', 'busy');
-  try {
-    const home = await apiGet('/api/delta_home');
-    const res = await apiPost('/api/move', { d1: home.delta_angle_1, d2: home.delta_angle_2, d3: home.delta_angle_3 });
-    if (!res.ok) { wizSetStatus('wizStep4Status', 'Move failed: ' + (res.response || ''), 'err'); $('wizBtnMoveHome').disabled = false; return; }
-    await wizWaitIdle('wizStep4Status', 'Moving to home position...');
-    wizSetStatus('wizStep4Status', 'At home position.', 'ok');
-    $('wizStep4').classList.remove('active'); $('wizStep4').classList.add('done');
-    $('wizDoneBanner').classList.add('show');
-  } catch (e) { wizSetStatus('wizStep4Status', 'Error: ' + e.message, 'err'); $('wizBtnMoveHome').disabled = false; }
-}
-async function wizInit() {
-  try {
-    const st = await apiGet('/api/state');
-    if (st.connected && st.port) {
-      await wizRefreshPorts(st.port);
-      wizSetStatus('wizStep1Status', 'Already connected to ' + st.port + '.', 'ok');
-      wizActivateStep(2); return;
-    }
-    if (st.port) knownPort = st.port;
-  } catch {}
-  await wizRefreshPorts(knownPort);
-}
-
 // ── Gantry ──────────────────────────────────────────────────────────
-function throttle(fn, ms) {
-  let timer = null, lastArgs = null;
-  return function(...args) {
+    function throttle(fn, ms) {
+      let timer = null, lastArgs = null;
+      return function(...args) {
     lastArgs = args; if (timer) return;
-    fn(...lastArgs);
+        fn(...lastArgs);
     timer = setTimeout(() => { timer = null; if (lastArgs) fn(...lastArgs); }, ms);
   };
 }
 const throttledGantry = throttle(() => sendGantry(), 80);
 
-function onGantrySliderInput() {
+    function onGantrySliderInput() {
   const v = clamp(parseFloat($('sliderGx').value) || 0, 0, 625);
   $('sliderGx').value = v; $('inputGx').value = v.toFixed(0);
-  throttledGantry();
-}
-function onGantryInputChange() {
+      throttledGantry();
+    }
+    function onGantryInputChange() {
   let v = parseFloat($('inputGx').value); if (isNaN(v)) v = 0;
   v = clamp(v, 0, 625); $('inputGx').value = v.toFixed(0); $('sliderGx').value = v;
-  sendGantry();
-}
-async function sendGantry() {
+      sendGantry();
+    }
+    async function sendGantry() {
   const x = clamp(parseFloat($('sliderGx').value) || 0, 0, 625);
   await cmd('/api/move_gantry', { x }, `GANTRY ${x.toFixed(0)} mm`);
-}
+    }
 
 // ── Gripper ─────────────────────────────────────────────────────────
 const throttledGrip = throttle(() => sendGrip(), 80);
 
-function onGripSliderInput() {
+    function onGripSliderInput() {
   const v = clamp(parseInt($('sliderGrip').value) || 1428, 1428, 2900);
   $('sliderGrip').value = v; $('inputGrip').value = v;
-  throttledGrip();
-}
-function onGripInputChange() {
+      throttledGrip();
+    }
+    function onGripInputChange() {
   let v = parseInt($('inputGrip').value); if (isNaN(v)) v = 1428;
   v = clamp(v, 1428, 2900); $('inputGrip').value = v; $('sliderGrip').value = v;
-  sendGrip();
-}
-async function sendGrip() {
+      sendGrip();
+    }
+    async function sendGrip() {
   await cmd('/api/grip', { position: clamp(parseInt($('sliderGrip').value) || 1428, 1428, 2900) }, 'GRIP');
 }
 async function gripOpen()  { $('sliderGrip').value = 2900; $('inputGrip').value = 2900; await cmd('/api/grip', { action: 'OPEN' }, 'GRIP OPEN'); }
@@ -1062,9 +917,9 @@ async function loadHomePosition() {
 }
 
 // ── Polling ─────────────────────────────────────────────────────────
-let firstPoll = true;
-async function pollState() {
-  try {
+    let firstPoll = true;
+    async function pollState() {
+      try {
     const s = await apiGet('/api/state');
     const dot = $('statusDot'), lbl = $('statusLabel');
     dot.className = 'status-dot';
@@ -1074,14 +929,14 @@ async function pollState() {
     updateConnUI(s.connected);
     if (firstPoll && s.connected && s.port) knownPort = s.port;
 
-    const gx = s.gantry_mm ?? null;
-    if (gx !== null) {
-      const c = clamp(gx, 0, 625);
+        const gx = s.gantry_mm ?? null;
+        if (gx !== null) {
+          const c = clamp(gx, 0, 625);
       if (document.activeElement !== $('sliderGx') && document.activeElement !== $('inputGx')) {
         $('sliderGx').value = c; $('inputGx').value = c.toFixed(0);
       }
     }
-    if (s.last_command) {
+        if (s.last_command) {
       const lc = s.last_command, el = $('cmdStatus');
       if (el.style.display === 'none' || el.dataset.cmd !== lc.cmd + lc.time) {
         showCmd(lc.cmd, lc.response, lc.ok); el.dataset.cmd = lc.cmd + lc.time;
@@ -1093,7 +948,7 @@ async function pollState() {
 
 // ── Init ────────────────────────────────────────────────────────────
 let resizeTimer;
-async function init() {
+    async function init() {
   $('statusLabel').textContent = 'Checking\u2026';
   await loadGeometry();
   await loadHomePosition();
@@ -1118,9 +973,13 @@ async function init() {
 }
 
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { setupCanvas(); render(); }, 100); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHomingWizard(); });
-$('homingModal').addEventListener('click', e => { if (e.target === $('homingModal')) closeHomingWizard(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if ($('homingModal').classList.contains('open')) closeHomingWizard();
+    if ($('calibSidebar').classList.contains('open')) closeCalibSidebar();
+  }
+});
 window.addEventListener('load', init);
-</script>
+  </script>
 </body>
 </html>

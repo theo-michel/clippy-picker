@@ -1,0 +1,263 @@
+<!-- Calibration Sidebar -->
+<aside class="calib-sidebar" id="calibSidebar">
+  <div class="calib-header">
+    <span class="calib-title">Camera Calibration</span>
+    <button class="modal-close" onclick="closeCalibSidebar()">&times;</button>
+  </div>
+
+  <div class="calib-body">
+    <!-- Status indicators -->
+    <div class="calib-status-row">
+      <div class="calib-status-item">
+        <span class="calib-status-dot" id="calCameraDot"></span>
+        <span id="calCameraLabel">Camera off</span>
+      </div>
+      <div class="calib-status-item">
+        <span class="calib-status-dot" id="calRobotDot"></span>
+        <span id="calRobotLabel">Disconnected</span>
+      </div>
+    </div>
+    <button class="btn btn-sm" id="calBtnStartCam" onclick="calStartCamera()" style="display:none;width:100%;">Start Camera</button>
+
+    <div class="calib-divider"></div>
+
+    <!-- Capture -->
+    <button class="btn btn-primary calib-capture-btn" id="calBtnCapture" onclick="calCapturePoint()">
+      Capture Point
+    </button>
+    <div class="calib-point-count">
+      <span id="calPointCount">0</span> points
+      <span class="calib-point-hint">(&ge;4 required, 10+ recommended)</span>
+    </div>
+    <p class="calib-guidance">
+      Move the robot with the dashboard controls. Vary X, Y, and Z for best results.
+      Ensure the ArUco marker is visible in the camera.
+    </p>
+    <div class="status-msg" id="calCaptureStatus"></div>
+
+    <div class="calib-divider"></div>
+
+    <!-- Points table -->
+    <div class="calib-table-wrap" id="calTableWrap">
+      <table class="calib-table">
+        <thead>
+          <tr><th>#</th><th>Delta (mm)</th><th>Cam (mm)</th><th>Err</th><th></th></tr>
+        </thead>
+        <tbody id="calPointsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="calib-divider"></div>
+
+    <!-- Results -->
+    <div id="calResultSection" style="display:none;">
+      <div class="calib-rmsd-row">
+        <span class="calib-label">RMSD</span>
+        <span class="calib-rmsd-badge" id="calRmsdBadge">--</span>
+      </div>
+      <div class="calib-matrix" id="calMatrix"></div>
+      <div class="calib-divider"></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="calib-actions">
+      <button class="btn btn-primary" id="calBtnSolve" onclick="calSolve()" disabled>Solve</button>
+      <button class="btn" id="calBtnSave" onclick="calSave()" disabled>Save</button>
+      <button class="btn calib-btn-clear" id="calBtnClear" onclick="calClear()">Clear All</button>
+    </div>
+    <div class="status-msg" id="calActionStatus"></div>
+  </div>
+</aside>
+
+<script>
+let calPoints = [];
+let calResult = null;
+
+function openCalibSidebar() {
+  $('calibSidebar').classList.add('open');
+  document.querySelector('.main').classList.add('sidebar-open');
+  calLoadState();
+  apiPost('/api/camera/overlay', { aruco: true }).catch(() => {});
+  setTimeout(() => { setupCanvas(); render(); }, 350);
+}
+function closeCalibSidebar() {
+  $('calibSidebar').classList.remove('open');
+  document.querySelector('.main').classList.remove('sidebar-open');
+  apiPost('/api/camera/overlay', { aruco: false }).catch(() => {});
+  setTimeout(() => { setupCanvas(); render(); }, 350);
+}
+
+function calUpdateStatus() {
+  const camOn = cameraRunning;
+  const camDot = $('calCameraDot'), camLbl = $('calCameraLabel');
+  camDot.className = 'calib-status-dot' + (camOn ? ' on' : '');
+  camLbl.textContent = camOn ? 'Camera running' : 'Camera off';
+  $('calBtnStartCam').style.display = camOn ? 'none' : '';
+
+  const conn = $('statusDot').classList.contains('connected');
+  const robDot = $('calRobotDot'), robLbl = $('calRobotLabel');
+  robDot.className = 'calib-status-dot' + (conn ? ' on' : '');
+  robLbl.textContent = conn ? 'Connected' : 'Disconnected';
+
+  $('calBtnCapture').disabled = !camOn || !conn;
+  $('calBtnSolve').disabled = calPoints.length < 4;
+  $('calBtnSave').disabled = !calResult;
+}
+
+async function calStartCamera() {
+  await toggleCamera();
+  setTimeout(calUpdateStatus, 500);
+}
+
+async function calLoadState() {
+  try {
+    const data = await apiGet('/api/calibration/state');
+    calPoints = data.points || [];
+    calResult = data.result || null;
+    calRenderPoints();
+    calRenderResult();
+    calUpdateStatus();
+  } catch {}
+}
+
+async function calCapturePoint() {
+  $('calBtnCapture').disabled = true;
+  $('calCaptureStatus').textContent = 'Detecting marker...';
+  $('calCaptureStatus').className = 'status-msg busy';
+  try {
+    const res = await apiPost('/api/calibration/capture');
+    if (!res.ok) {
+      $('calCaptureStatus').textContent = res.message || 'Capture failed';
+      $('calCaptureStatus').className = 'status-msg err';
+      $('calBtnCapture').disabled = false;
+      return;
+    }
+    calPoints.push(res.point);
+    calResult = null;
+    calRenderPoints();
+    calRenderResult();
+    $('calCaptureStatus').textContent = 'Point #' + calPoints.length + ' captured';
+    $('calCaptureStatus').className = 'status-msg ok';
+  } catch (e) {
+    $('calCaptureStatus').textContent = 'Error: ' + e.message;
+    $('calCaptureStatus').className = 'status-msg err';
+  }
+  calUpdateStatus();
+}
+
+async function calRemovePoint(idx) {
+  try {
+    const res = await apiPost('/api/calibration/remove', { index: idx });
+    if (res.ok) {
+      calPoints.splice(idx, 1);
+      calResult = null;
+      calRenderPoints();
+      calRenderResult();
+      calUpdateStatus();
+    }
+  } catch {}
+}
+
+function calRenderPoints() {
+  const tbody = $('calPointsBody');
+  $('calPointCount').textContent = calPoints.length;
+  if (!calPoints.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:12px;">No points captured</td></tr>';
+    return;
+  }
+  const rows = calPoints.map((p, i) => {
+    const d = p.d_point.map(v => v.toFixed(0)).join(', ');
+    const c = p.c_point.map(v => v.toFixed(0)).join(', ');
+    const err = calResult && calResult.residuals ? calResult.residuals[i].toFixed(1) : '--';
+    return `<tr>
+      <td>${i + 1}</td>
+      <td class="mono">${d}</td>
+      <td class="mono">${c}</td>
+      <td class="mono">${err}</td>
+      <td><button class="calib-remove-btn" onclick="calRemovePoint(${i})">&times;</button></td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows.join('');
+}
+
+async function calSolve() {
+  $('calBtnSolve').disabled = true;
+  $('calActionStatus').textContent = 'Running Kabsch...';
+  $('calActionStatus').className = 'status-msg busy';
+  try {
+    const res = await apiPost('/api/calibration/solve');
+    if (!res.ok) {
+      $('calActionStatus').textContent = res.message || 'Solve failed';
+      $('calActionStatus').className = 'status-msg err';
+      $('calBtnSolve').disabled = false;
+      return;
+    }
+    calResult = res;
+    calRenderPoints();
+    calRenderResult();
+    $('calActionStatus').textContent = 'Solved — RMSD ' + res.rmsd.toFixed(2) + ' mm';
+    $('calActionStatus').className = 'status-msg ok';
+  } catch (e) {
+    $('calActionStatus').textContent = 'Error: ' + e.message;
+    $('calActionStatus').className = 'status-msg err';
+  }
+  calUpdateStatus();
+}
+
+function calRenderResult() {
+  const sec = $('calResultSection');
+  if (!calResult) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+
+  const badge = $('calRmsdBadge');
+  const rmsd = calResult.rmsd;
+  badge.textContent = rmsd.toFixed(2) + ' mm';
+  badge.className = 'calib-rmsd-badge ' + (rmsd < 3 ? 'good' : rmsd < 5 ? 'warn' : 'bad');
+
+  const R = calResult.R, t = calResult.t;
+  const fmt = v => (v >= 0 ? '\u00a0' : '') + v.toFixed(3);
+  const rows = R.map((row, i) =>
+    `<div class="calib-matrix-row">${row.map(fmt).join('  ')}  ${fmt(t[i])}</div>`
+  );
+  $('calMatrix').innerHTML = '<div class="calib-label" style="margin-bottom:4px;">D_T_c  (R | t)</div>' + rows.join('');
+}
+
+async function calSave() {
+  $('calBtnSave').disabled = true;
+  try {
+    const res = await apiPost('/api/calibration/save');
+    if (res.ok) {
+      $('calActionStatus').textContent = 'Calibration saved';
+      $('calActionStatus').className = 'status-msg ok';
+    } else {
+      $('calActionStatus').textContent = res.message || 'Save failed';
+      $('calActionStatus').className = 'status-msg err';
+      $('calBtnSave').disabled = false;
+    }
+  } catch (e) {
+    $('calActionStatus').textContent = 'Error: ' + e.message;
+    $('calActionStatus').className = 'status-msg err';
+    $('calBtnSave').disabled = false;
+  }
+}
+
+async function calClear() {
+  if (!confirm('Clear all calibration points?')) return;
+  try {
+    await apiPost('/api/calibration/clear');
+    calPoints = [];
+    calResult = null;
+    calRenderPoints();
+    calRenderResult();
+    calUpdateStatus();
+    $('calCaptureStatus').textContent = '';
+    $('calActionStatus').textContent = '';
+  } catch {}
+}
+
+window.addEventListener('load', () => {
+  setInterval(() => {
+    if ($('calibSidebar').classList.contains('open')) calUpdateStatus();
+  }, 1000);
+});
+</script>
