@@ -100,7 +100,11 @@ class DeltaKinematics:
         """
         L = self.upper_arm
         l = self.lower_arm
-        Fd = self.Fd
+        # Effective radius: the lower arm connects each elbow to the effector
+        # *joint*, which is offset Ed from the effector centre toward the arm.
+        # Using f = Fd - Ed shifts each sphere centre so that the intersection
+        # directly gives the effector centre P.
+        f = self.Fd - self.Ed
         sqrt3 = self._sqrt3
 
         def rad(d: float) -> float:
@@ -108,25 +112,21 @@ class DeltaKinematics:
 
         t1, t2, t3 = rad(theta1_deg), rad(theta2_deg), rad(theta3_deg)
 
-        # Elbow positions consistent with IK: for arm 1, elbow = (0, Py, Pz) with
-        # Py = -Fd - L*cos(θ), Pz = -L*sin(θ) (classic method convention)
-        E1 = (
-            0.0,
-            -Fd - L * math.cos(t1),
-            -L * math.sin(t1),
-        )
-        # Arm 2 and 3: same (y, z) as arm 1 in their local frames; local y is at 120° / 240°
-        # So E2 = ( (Fd+L*cos(t2))*sqrt3/2, -(Fd+L*cos(t2))/2, -L*sin(t2) ), E3 = ( -(Fd+L*cos(t3))*sqrt3/2, -(Fd+L*cos(t3))/2, -L*sin(t3) )
         c2, s2 = math.cos(t2), math.sin(t2)
         c3, s3 = math.cos(t3), math.sin(t3)
+        E1 = (
+            0.0,
+            -f - L * math.cos(t1),
+            -L * math.sin(t1),
+        )
         E2 = (
-            (Fd + L * c2) * sqrt3 / 2.0,
-            -(Fd + L * c2) / 2.0,
+            (f + L * c2) * sqrt3 / 2.0,
+            -(f + L * c2) / 2.0,
             -L * s2,
         )
         E3 = (
-            -(Fd + L * c3) * sqrt3 / 2.0,
-            -(Fd + L * c3) / 2.0,
+            -(f + L * c3) * sqrt3 / 2.0,
+            -(f + L * c3) / 2.0,
             -L * s3,
         )
 
