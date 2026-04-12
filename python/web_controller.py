@@ -13,16 +13,22 @@ Requirements:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
 import threading
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
-from flask import Flask, Response, jsonify, render_template, request
+import numpy as np
+from flask import Flask, Response, jsonify, redirect, render_template, request
 import serial.tools.list_ports
 
 from delta_robot import DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
+from transforms import kabsch, make_transform
 
 try:
     from camera import RealsenseCamera, realsense_available
@@ -31,6 +37,7 @@ except ImportError:
 
     def realsense_available() -> bool:  # type: ignore[misc]
         return False
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,6 +74,12 @@ camera_lock = threading.Lock()
 # Command log (ring buffer, newest first)
 command_log: list[dict] = []
 LOG_MAX = 50
+
+# Calibration state
+CALIBRATION_DIR = Path(__file__).parent / "calibration"
+CALIBRATION_FILE = CALIBRATION_DIR / "camera_transform.json"
+calibration_points: list[dict] = []  # [{"d_point": [x,y,z], "c_point": [x,y,z]}]
+calibration_result: dict | None = None  # {"R": ..., "t": ..., "rmsd": ..., ...}
 
 # Inverse kinematics (all dimensions in mm)
 ik_config = {
@@ -182,12 +195,12 @@ def index():
 
 @app.route("/homing")
 def homing():
-    return render_template("homing.html")
+    return redirect("/", code=302)
 
 
 @app.route("/calibration")
 def calibration():
-    return render_template("calibration.html")
+    return redirect("/", code=302)
 
 
 # ====================================================================== #
@@ -620,6 +633,167 @@ def api_camera_feed():
         camera.generate_mjpeg(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+# ---------- Calibration ----------
+
+
+@app.route("/api/calibration/state")
+def api_calibration_state():
+    """Return current calibration session: collected points and solved result."""
+    saved = None
+    if CALIBRATION_FILE.exists():
+        try:
+            saved = json.loads(CALIBRATION_FILE.read_text())
+        except Exception:
+            pass
+    return jsonify(
+        {
+            "points": calibration_points,
+            "num_points": len(calibration_points),
+            "result": calibration_result,
+            "saved": saved,
+        }
+    )
+
+
+@app.route("/api/calibration/capture", methods=["POST"])
+def api_calibration_capture():
+    """Capture one calibration point: detect ArUco, deproject, get FK position."""
+    data = request.json or {}
+    aruco_dict = data.get("aruco_dict", "DICT_4X4_50")
+    marker_id_filter = data.get("marker_id")  # None = accept any
+    offset = data.get("marker_offset", None)
+
+    if offset is None:
+        from coordinates import MARKER_OFFSET_FROM_EE
+
+        offset = list(MARKER_OFFSET_FROM_EE)
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Camera not running"}), 400
+        markers = camera.detect_aruco(aruco_dict)
+        if not markers:
+            return jsonify({"ok": False, "message": "No ArUco marker detected"}), 400
+
+        marker = markers[0]
+        if marker_id_filter is not None:
+            matching = [m for m in markers if m["id"] == marker_id_filter]
+            if not matching:
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "message": f"Marker ID {marker_id_filter} not found (saw {[m['id'] for m in markers]})",
+                        }
+                    ),
+                    400,
+                )
+            marker = matching[0]
+
+        cu, cv = marker["center"]
+        c_point = camera.deproject(int(round(cu)), int(round(cv)))
+        if c_point is None:
+            return jsonify({"ok": False, "message": "No depth at marker center"}), 400
+
+    if not state["connected"]:
+        return jsonify({"ok": False, "message": "Robot not connected"}), 400
+
+    positions = state["positions"]
+    fk_pos = dk.forward(positions[0], positions[1], positions[2])
+    d_point = [
+        fk_pos[0] + offset[0],
+        fk_pos[1] + offset[1],
+        fk_pos[2] + offset[2],
+    ]
+
+    entry = {
+        "d_point": [round(v, 2) for v in d_point],
+        "c_point": [round(v, 2) for v in c_point],
+        "angles": [round(v, 2) for v in positions],
+        "marker_id": marker["id"],
+        "pixel": [round(cu, 1), round(cv, 1)],
+    }
+    calibration_points.append(entry)
+
+    return jsonify({"ok": True, "point": entry, "index": len(calibration_points) - 1})
+
+
+@app.route("/api/calibration/remove", methods=["POST"])
+def api_calibration_remove():
+    """Remove a calibration point by index."""
+    global calibration_result
+    data = request.json or {}
+    idx = int(data.get("index", -1))
+    if 0 <= idx < len(calibration_points):
+        calibration_points.pop(idx)
+        calibration_result = None
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "message": "Invalid index"}), 400
+
+
+@app.route("/api/calibration/solve", methods=["POST"])
+def api_calibration_solve():
+    """Run Kabsch on collected points to compute D_T_c."""
+    global calibration_result
+    if len(calibration_points) < 4:
+        return jsonify({"ok": False, "message": "Need at least 4 points"}), 400
+
+    C = np.array([p["c_point"] for p in calibration_points])
+    D = np.array([p["d_point"] for p in calibration_points])
+
+    R, t, rmsd, residuals = kabsch(C, D)
+
+    calibration_result = {
+        "R": R.tolist(),
+        "t": t.tolist(),
+        "rmsd": round(rmsd, 3),
+        "residuals": [round(float(r), 3) for r in residuals],
+        "num_points": len(calibration_points),
+    }
+    return jsonify({"ok": True, **calibration_result})
+
+
+@app.route("/api/calibration/save", methods=["POST"])
+def api_calibration_save():
+    """Persist the solved D_T_c to disk."""
+    if calibration_result is None:
+        return jsonify({"ok": False, "message": "No calibration result to save"}), 400
+
+    CALIBRATION_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        **calibration_result,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    CALIBRATION_FILE.write_text(json.dumps(payload, indent=2))
+    log.info(
+        "Calibration saved to %s (RMSD=%.2f mm)",
+        CALIBRATION_FILE,
+        calibration_result["rmsd"],
+    )
+    return jsonify({"ok": True, "path": str(CALIBRATION_FILE)})
+
+
+@app.route("/api/calibration/load")
+def api_calibration_load():
+    """Load a previously saved D_T_c from disk."""
+    if not CALIBRATION_FILE.exists():
+        return jsonify({"ok": False, "message": "No saved calibration found"}), 404
+    try:
+        data = json.loads(CALIBRATION_FILE.read_text())
+        return jsonify({"ok": True, **data})
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/api/calibration/clear", methods=["POST"])
+def api_calibration_clear():
+    """Discard all collected calibration points and results."""
+    global calibration_result
+    calibration_points.clear()
+    calibration_result = None
+    return jsonify({"ok": True})
 
 
 # ====================================================================== #
