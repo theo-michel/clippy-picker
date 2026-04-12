@@ -52,7 +52,7 @@ from coordinates import (
 
 logger = logging.getLogger(__name__)
 
-BAUD = 1_000_000
+BAUD = 115_200
 READ_TIMEOUT = 0.5  # seconds — how long readline blocks
 CONNECT_TIMEOUT = 5.0  # seconds — wait for READY after reset
 DONE_TIMEOUT = 30.0  # seconds — max wait for motion to finish

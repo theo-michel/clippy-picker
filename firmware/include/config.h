@@ -6,7 +6,7 @@
 
 // ── Serial (USB ↔ host PC) ──────────────────────────────────────────────────
 
-#define SERIAL_BAUD 1000000
+#define SERIAL_BAUD 115200
 
 // ── Feetech gripper (STS3215 on Serial2) ────────────────────────────────────
 
