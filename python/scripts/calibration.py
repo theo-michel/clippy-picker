@@ -28,8 +28,8 @@ DEFAULT_LOWER_ARM = 268.0
 DEFAULT_FD = 82.5
 DEFAULT_ED = 27.3
 
-# Default working height (mm, Z points downward so workspace is negative)
-DEFAULT_Z = -250.0
+# Default working height (mm, +Z points down so workspace is positive)
+DEFAULT_Z = 250.0
 
 # Square side length (mm)
 SQUARE_SIDE = 80.0  # 8 cm

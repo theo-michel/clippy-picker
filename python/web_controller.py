@@ -501,7 +501,7 @@ def api_move_xyz():
     data = request.json or {}
     x = float(data.get("x", 0))
     y = float(data.get("y", 0))
-    z = float(data.get("z", -200))
+    z = float(data.get("z", 200))
     try:
         resp, ok = robot_exec(
             f"XYZ ({x:.1f}, {y:.1f}, {z:.1f})",
@@ -531,7 +531,7 @@ def api_move_position():
     gantry_x = float(data.get("gantry_x", 0))
     x = float(data.get("x", 0))
     y = float(data.get("y", 0))
-    z = float(data.get("z", -200))
+    z = float(data.get("z", 200))
     try:
         resp, ok = robot_exec(
             f"POS G={gantry_x:.1f} ({x:.1f}, {y:.1f}, {z:.1f})",

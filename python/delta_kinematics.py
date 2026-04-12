@@ -1,34 +1,38 @@
 """
-Delta Robot Inverse Kinematics
+Delta Robot Kinematics — inverse and forward.
 
-Classic circle-intersection approach: project arm geometry onto the YZ plane,
-solve circle-circle intersection (quadratic in elbow position), then compute
-joint angle from elbow.
-
-Reference frame:
+Reference frame (right-handed):
   - Origin at the centre of the base platform.
-  - Z axis points downward (end-effector workspace is at negative z).
+  - +X points toward arm 1 (motor 1).
+  - +Z points downward (workspace is at positive z).
+  - +Y completes the right-hand rule.
+
+  Arms in the XY plane (anticlockwise when viewed from below / +Z):
+    Arm 1 at   0° (along +X).
+    Arm 2 at 120°.
+    Arm 3 at 240°.
 
 Joint angle convention (kinematic space):
-  - θ = 0° means the upper arm is **horizontal** (elbow in the base plane, z = 0).
-  - θ > 0° means the arm is tilted **down** from horizontal; θ < 0° means **up**.
-  So cos(θ) and sin(θ) in the formulas depend on this numeric value; the kinematics
-  does care what number you pass. The mechanical stop is 21.8° above horizontal,
-  which corresponds to θ = -21.8° in this convention. The firmware reports 0 at
-  that pose (after ZERO); use the offset in coordinates.DELTA_KINEMATIC_AT_FIRMWARE_ZERO
-  when converting between firmware and kinematic angles.
+  - θ = 0°  → upper arm horizontal.
+  - θ > 0°  → arm tilted downward.
+  - θ < 0°  → arm tilted upward.
 
-Robot geometry parameters (all in the same unit, e.g. mm):
-  upper_arm — shoulder-to-elbow length  (L)
-  lower_arm — elbow-to-effector-joint length  (l)
-  Fd        — base joint offset from centre
-  Ed        — effector joint offset from centre
+  The mechanical stop is 21.8° above horizontal → θ = −21.8° kinematic.
+  The firmware reports 0 at that pose (after ZERO); use the offset in
+  coordinates.DELTA_KINEMATIC_AT_FIRMWARE_ZERO when converting.
 
-Usage:
+Robot geometry parameters (all in mm):
+  upper_arm (L) — shoulder-to-elbow length
+  lower_arm (l) — elbow-to-effector-joint rod length
+  Fd            — base platform joint offset from centre
+  Ed            — effector platform joint offset from centre
+
+Usage::
+
     from delta_kinematics import DeltaKinematics
 
     dk = DeltaKinematics(upper_arm=150, lower_arm=268, Fd=82.5, Ed=27.3)
-    angles = dk.inverse(x=0, y=0, z=-250)
+    angles = dk.inverse(x=0, y=0, z=250)
     print(angles)  # (θ1, θ2, θ3) in degrees
 """
 
@@ -41,12 +45,12 @@ from typing import Tuple
 
 @dataclass
 class DeltaKinematics:
-    """Inverse kinematics solver for a symmetric delta robot."""
+    """Inverse / forward kinematics solver for a symmetric delta robot."""
 
-    upper_arm: float   # L  — shoulder-to-elbow
-    lower_arm: float   # l  — elbow-to-effector-joint
-    Fd: float          # base joint offset from centre
-    Ed: float          # effector joint offset from centre
+    upper_arm: float  # L  — shoulder-to-elbow
+    lower_arm: float  # l  — elbow-to-effector-joint
+    Fd: float  # base joint offset from centre
+    Ed: float  # effector joint offset from centre
 
     def __post_init__(self) -> None:
         self._sqrt3 = math.sqrt(3.0)
@@ -57,23 +61,26 @@ class DeltaKinematics:
 
     def inverse(self, x: float, y: float, z: float) -> Tuple[float, float, float]:
         """
-        Compute the three joint angles for a desired end-effector position.
+        Compute joint angles for a desired end-effector position.
 
         Args:
-            x, y, z: Target position in the robot's reference frame.
+            x, y, z: Target in the robot frame (mm).  Workspace at z > 0.
 
         Returns:
-            (theta1, theta2, theta3) in **degrees**.
+            (θ1, θ2, θ3) in degrees.
 
         Raises:
             ValueError: If the target is unreachable.
         """
-        t1 = self._solve_arm_classic(x, y, z)
+        t1 = self._solve_arm(x, y, z)
 
-        x2, y2 = self._rotate_120(x, y)
-        t2 = self._solve_arm_classic(x2, y2, z)
-        x3, y3 = self._rotate_240(x, y)
-        t3 = self._solve_arm_classic(x3, y3, z)
+        # Arm 2 at +120°: rotate target by −120° (= +240°) to align with arm 1.
+        x2, y2 = self._rotate_240(x, y)
+        t2 = self._solve_arm(x2, y2, z)
+
+        # Arm 3 at +240°: rotate target by −240° (= +120°) to align with arm 1.
+        x3, y3 = self._rotate_120(x, y)
+        t3 = self._solve_arm(x3, y3, z)
 
         return (t1, t2, t3)
 
@@ -84,54 +91,52 @@ class DeltaKinematics:
         theta3_deg: float,
     ) -> Tuple[float, float, float]:
         """
-        Compute end-effector (x, y, z) from joint angles (forward kinematics).
+        Compute end-effector (x, y, z) from joint angles.
 
-        Uses the same frame as inverse(): origin at base centre, Z downward.
-        The solution with z < 0 (below the base) is returned.
+        Returns the solution with z > 0 (below the base).
 
         Args:
-            theta1_deg, theta2_deg, theta3_deg: Joint angles in **degrees**.
+            theta1_deg, theta2_deg, theta3_deg: Joint angles in degrees.
 
         Returns:
-            (x, y, z) in the same units as the robot geometry (e.g. mm).
+            (x, y, z) in mm.
 
         Raises:
             ValueError: If the configuration is singular or unreachable.
         """
         L = self.upper_arm
         l = self.lower_arm
-        # Effective radius: the lower arm connects each elbow to the effector
-        # *joint*, which is offset Ed from the effector centre toward the arm.
-        # Using f = Fd - Ed shifts each sphere centre so that the intersection
-        # directly gives the effector centre P.
         f = self.Fd - self.Ed
         sqrt3 = self._sqrt3
 
-        def rad(d: float) -> float:
-            return math.radians(d)
+        t1 = math.radians(theta1_deg)
+        t2 = math.radians(theta2_deg)
+        t3 = math.radians(theta3_deg)
 
-        t1, t2, t3 = rad(theta1_deg), rad(theta2_deg), rad(theta3_deg)
-
+        c1, s1 = math.cos(t1), math.sin(t1)
         c2, s2 = math.cos(t2), math.sin(t2)
         c3, s3 = math.cos(t3), math.sin(t3)
+
+        # Sphere centres — elbow positions shifted by Ed so the
+        # intersection directly yields the effector centre.
+        # Arm 1 at 0°, arm 2 at +120°, arm 3 at +240°.
         E1 = (
+            f + L * c1,
             0.0,
-            -f - L * math.cos(t1),
-            -L * math.sin(t1),
+            L * s1,
         )
         E2 = (
-            (f + L * c2) * sqrt3 / 2.0,
             -(f + L * c2) / 2.0,
-            -L * s2,
+            (f + L * c2) * sqrt3 / 2.0,
+            L * s2,
         )
         E3 = (
-            -(f + L * c3) * sqrt3 / 2.0,
             -(f + L * c3) / 2.0,
-            -L * s3,
+            -(f + L * c3) * sqrt3 / 2.0,
+            L * s3,
         )
 
-        # P is the intersection of three spheres |P - Ei|^2 = l^2
-        # Subtract sphere 1 from 2 and 3 to get two linear equations in P
+        # Intersect three spheres  |P − Eᵢ|² = l²
         def dot(a: tuple, b: tuple) -> float:
             return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
@@ -143,9 +148,6 @@ class DeltaKinematics:
         rhs_a = (sq_norm(E1) - sq_norm(E2)) / 2.0
         rhs_b = (sq_norm(E1) - sq_norm(E3)) / 2.0
 
-        # Solve P.A = rhs_a, P.B = rhs_b. Express Px, Py in terms of Pz using
-        # the two linear equations (2x2 system in Px, Py when A and B have
-        # nonzero XY components).
         ax, ay, az = A
         bx, by, bz = B
         det = ax * by - ay * bx
@@ -153,88 +155,87 @@ class DeltaKinematics:
             raise ValueError(
                 "Forward kinematics singular (elbows aligned or degenerate)"
             )
-        # Px = (rhs_a*by - rhs_b*ay - Pz*(az*by - ay*bz)) / det
-        # Py = (rhs_b*ax - rhs_a*bx - Pz*(ax*bz - az*bx)) / det
+
         kx = (az * by - ay * bz) / det
         ky = (ax * bz - az * bx) / det
         cx = (rhs_a * by - rhs_b * ay) / det
         cy = (rhs_b * ax - rhs_a * bx) / det
-        # P = (cx - kx*Pz, cy - ky*Pz, Pz)
-        # |P - E1|^2 = l^2  =>  quadratic in Pz
+
         ex, ey, ez = E1
         px0 = cx - ex
         py0 = cy - ey
         qa = kx * kx + ky * ky + 1.0
-        qb = 2.0 * (px0 * kx + py0 * ky - ez)
+        qb = -2.0 * (px0 * kx + py0 * ky + ez)
         qc = px0 * px0 + py0 * py0 + ez * ez - l * l
         disc = qb * qb - 4.0 * qa * qc
         if disc < 0.0:
             raise ValueError(
                 "Forward kinematics: no intersection (invalid joint angles)"
             )
+
         sqrt_d = math.sqrt(disc)
         pz1 = (-qb + sqrt_d) / (2.0 * qa)
         pz2 = (-qb - sqrt_d) / (2.0 * qa)
-        # Choose the solution below the base (negative z)
-        if pz1 <= 0 and pz2 <= 0:
-            pz = max(pz1, pz2)
-        elif pz1 <= 0:
+
+        # Pick the solution below the base (positive z).
+        if pz1 >= 0 and pz2 >= 0:
+            pz = min(pz1, pz2)
+        elif pz1 >= 0:
             pz = pz1
-        elif pz2 <= 0:
+        elif pz2 >= 0:
             pz = pz2
         else:
-            pz = min(pz1, pz2)
+            pz = max(pz1, pz2)
+
         px = cx - kx * pz
         py = cy - ky * pz
         return (px, py, pz)
 
-    def _solve_arm_classic(self, x: float, y: float, z: float) -> float:
-        """
-        Solve one arm's angle via circle-circle intersection.
+    # ------------------------------------------------------------------ #
+    #  Single-arm solver
+    # ------------------------------------------------------------------ #
 
-        Projects the geometry onto the YZ plane, sets up two circle
-        equations, reduces them to a quadratic in Py, and picks the
-        valid (outer) root.
+    def _solve_arm(self, x: float, y: float, z: float) -> float:
+        """
+        Solve one arm's joint angle via the cosine rule.
+
+        Expects the target rotated so the arm under consideration lies
+        along +X.  The arm moves in the XZ plane; *y* is perpendicular.
         """
         L = self.upper_arm
         l = self.lower_arm
-        Fd = self.Fd
-        Ed = self.Ed
 
-        y_hat = y - Ed
-
-        if abs(z) < 1e-12:
-            raise ValueError("z ≈ 0 causes a division by zero in the classic method")
-
-        # Linear relation  Pz = a + b·Py
-        a = (x * x + y_hat * y_hat + z * z + L * L - l * l - Fd * Fd) / (2.0 * z)
-        b = -(Fd + y_hat) / z
-
-        # Quadratic  A·Py² + B·Py + C = 0
-        A = b * b + 1.0
-        B = 2.0 * (b * (a - z) - y_hat)
-        C = y_hat * y_hat + (a - z) ** 2 - (l * l - x * x)
-
-        discriminant = B * B - 4.0 * A * C
-        if discriminant < 0.0:
+        # Effective lower-arm length projected into the arm's XZ plane.
+        A2 = l * l - y * y
+        if A2 < 0.0:
             raise ValueError(
-                f"Target ({x}, {y}, {z}) is unreachable "
-                f"(discriminant = {discriminant:.6f})"
+                f"Target unreachable: |y| = {abs(y):.1f} exceeds lower arm {l:.1f}"
             )
 
-        sqrt_d = math.sqrt(discriminant)
-        Py = (-B - sqrt_d) / (2.0 * A)  # outer (valid) solution
-        Pz = a + b * Py
+        # In-plane distance from shoulder (Fd, 0) to effector joint (x+Ed, z).
+        d = x + self.Ed - self.Fd
+        W2 = d * d + z * z
+        W = math.sqrt(W2)
+        if W < 1e-12:
+            raise ValueError("Target coincides with shoulder pivot")
 
-        theta_deg = math.degrees(math.atan2(-Pz, -(Fd + Py)))
-        return theta_deg
+        cos_omega = (W2 + L * L - A2) / (2.0 * L * W)
+        if abs(cos_omega) > 1.0:
+            raise ValueError(
+                f"Target ({x:.1f}, {y:.1f}, {z:.1f}) unreachable "
+                f"(cos_omega = {cos_omega:.6f})"
+            )
+
+        beta = math.atan2(z, d)
+        omega = math.acos(cos_omega)
+        return math.degrees(beta - omega)
 
     # ------------------------------------------------------------------ #
     #  Rotation helpers (120° / 240° around Z)
     # ------------------------------------------------------------------ #
 
     def _rotate_120(self, x: float, y: float) -> Tuple[float, float]:
-        """Rotate (x, y) by +120° around the Z axis."""
+        """Rotate (x, y) by +120° around Z."""
         cos120 = -0.5
         sin120 = self._sqrt3 / 2.0
         return (
@@ -243,7 +244,7 @@ class DeltaKinematics:
         )
 
     def _rotate_240(self, x: float, y: float) -> Tuple[float, float]:
-        """Rotate (x, y) by +240° around the Z axis."""
+        """Rotate (x, y) by +240° (≡ −120°) around Z."""
         cos240 = -0.5
         sin240 = -self._sqrt3 / 2.0
         return (
@@ -254,6 +255,9 @@ class DeltaKinematics:
 
 if __name__ == "__main__":
     dk = DeltaKinematics(upper_arm=150, lower_arm=268, Fd=82.5, Ed=27.3)
-    for x, y, z in [(0.0, 0.0, -250.0), (50.0, 0.0, -250.0)]:
+    for x, y, z in [(0.0, 0.0, 250.0), (50.0, 0.0, 250.0)]:
         angles = dk.inverse(x, y, z)
-        print(f"({x}, {y}, {z}) -> ({angles[0]:.4f}, {angles[1]:.4f}, {angles[2]:.4f})°")
+        print(f"IK ({x}, {y}, {z}) → ({angles[0]:.4f}, {angles[1]:.4f}, {angles[2]:.4f})°")
+    for a in [(-15.0, -15.0, -15.0), (24.6, 24.6, 24.6)]:
+        pos = dk.forward(*a)
+        print(f"FK ({a[0]:.1f}, {a[1]:.1f}, {a[2]:.1f})° → ({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f})")

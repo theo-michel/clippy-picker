@@ -187,7 +187,7 @@ body {
 }
 .z-lever-tick { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); }
 .z-lever {
-  writing-mode: vertical-lr; direction: rtl;
+  writing-mode: vertical-lr; direction: ltr;
   -webkit-appearance: none; appearance: none;
   flex: 1; width: 28px; margin: 4px 0;
   background: transparent; cursor: ns-resize;
@@ -305,7 +305,7 @@ body {
       <div class="pane-header">
         <span class="pane-title">
           Workspace&ensp;
-          <span style="color:var(--axis-y)">Y</span>&thinsp;/&thinsp;<span style="color:var(--axis-x)">X</span>
+          <span style="color:var(--axis-x)">X</span>&thinsp;/&thinsp;<span style="color:var(--axis-y)">Y</span>
         </span>
         <span class="pane-coords" id="coordsXY"></span>
       </div>
@@ -313,12 +313,12 @@ body {
         <canvas id="canvasXY"></canvas>
         <div class="z-lever-col">
           <span class="z-lever-label">Z</span>
-          <span class="z-lever-tick" id="zTickMax">&minus;140</span>
+          <span class="z-lever-tick" id="zTickMax">140</span>
           <input type="range" class="z-lever" id="sliderZ"
-                 min="-400" max="-140" step="1" value="-250"
+                 min="140" max="400" step="1" value="250"
                  oninput="onZInput(this.value)">
-          <span class="z-lever-tick">&minus;400</span>
-          <span class="z-lever-val" id="zVal">-250</span>
+          <span class="z-lever-tick">400</span>
+          <span class="z-lever-val" id="zVal">250</span>
           <span class="z-lever-tick">mm</span>
         </div>
       </div>
@@ -341,7 +341,7 @@ body {
         </div>
         <div class="pos-row">
           <span class="pos-label lz">Z</span>
-          <input type="number" class="pos-input" id="inputZ" value="-250" step="1" onchange="onPosInput('z')">
+          <input type="number" class="pos-input" id="inputZ" value="250" step="1" onchange="onPosInput('z')">
           <span class="pos-unit">mm</span>
         </div>
       </div>
@@ -386,8 +386,8 @@ body {
 </div>
 
 <script>
-const pos = { x: 0, y: 0, z: -250 };
-let homeXYZ = { x: 0, y: 0, z: -140 };
+const pos = { x: 0, y: 0, z: 250 };
+let homeXYZ = { x: 0, y: 0, z: 140 };
 let geo = { L: 150, l: 268, Fd: 82.5, Ed: 27.3 };
 let angles = [null, null, null];
 let reachable = true;
@@ -401,29 +401,33 @@ const XY_RANGE = 180;
 const SEND_INTERVAL = 60;
 
 // ── Client-side Inverse Kinematics ──────────────────────────────────
+// Frame: +X toward arm 1, +Z down, +Y right-hand rule.
+// After rotation the arm under test lies along +X; y is perpendicular.
 function solveArm(L, l, Fd, Ed, x, y, z) {
-  const A2 = l * l - x * x;
+  const A2 = l * l - y * y;
   if (A2 < 0) return null;
-  const d = y - Ed + Fd;
-  const W2 = z * z + d * d;
+  const d = x + Ed - Fd;
+  const W2 = d * d + z * z;
   const W = Math.sqrt(W2);
   if (W < 1e-6) return null;
   const cosOmega = (W2 + L * L - A2) / (2 * L * W);
   if (Math.abs(cosOmega) > 1) return null;
-  const alpha = Math.asin(Math.max(-1, Math.min(1, d / W))) * 180 / Math.PI;
+  const beta = Math.atan2(z, d) * 180 / Math.PI;
   const omega = Math.acos(cosOmega) * 180 / Math.PI;
-  return 90 + alpha - omega;
+  return beta - omega;
 }
 
 function computeIK(x, y, z) {
   const { L, l, Fd, Ed } = geo;
   const t1 = solveArm(L, l, Fd, Ed, x, y, z);
   if (t1 === null) return null;
-  const cos120 = -0.5, sin120 = SQRT3 / 2;
-  const t2 = solveArm(L, l, Fd, Ed, x * cos120 - y * sin120, x * sin120 + y * cos120, z);
-  if (t2 === null) return null;
+  // Arm 2 at +120deg: rotate target by -120deg (= +240deg)
   const cos240 = -0.5, sin240 = -SQRT3 / 2;
-  const t3 = solveArm(L, l, Fd, Ed, x * cos240 - y * sin240, x * sin240 + y * cos240, z);
+  const t2 = solveArm(L, l, Fd, Ed, x * cos240 - y * sin240, x * sin240 + y * cos240, z);
+  if (t2 === null) return null;
+  // Arm 3 at +240deg: rotate target by -240deg (= +120deg)
+  const cos120 = -0.5, sin120 = SQRT3 / 2;
+  const t3 = solveArm(L, l, Fd, Ed, x * cos120 - y * sin120, x * sin120 + y * cos120, z);
   if (t3 === null) return null;
   return [t1, t2, t3];
 }
@@ -496,16 +500,16 @@ function setupCanvas() {
 function w2c(wx, wy) {
   const dw = canvasW - MARGIN - MARGIN_R, dh = canvasH - 2 * MARGIN;
   return {
-    x: MARGIN + (XY_RANGE - wy) / (2 * XY_RANGE) * dw,
-    y: MARGIN + (XY_RANGE - wx) / (2 * XY_RANGE) * dh,
+    x: MARGIN + (XY_RANGE - wx) / (2 * XY_RANGE) * dw,
+    y: MARGIN + (XY_RANGE - wy) / (2 * XY_RANGE) * dh,
   };
 }
 
 function c2w(cx, cy) {
   const dw = canvasW - MARGIN - MARGIN_R, dh = canvasH - 2 * MARGIN;
   return {
-    x: clamp(XY_RANGE - (cy - MARGIN) / dh * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
-    y: clamp(XY_RANGE - (cx - MARGIN) / dw * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
+    x: clamp(XY_RANGE - (cx - MARGIN) / dw * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
+    y: clamp(XY_RANGE - (cy - MARGIN) / dh * 2 * XY_RANGE, -XY_RANGE, XY_RANGE),
   };
 }
 
@@ -523,22 +527,22 @@ function render() {
   ctx.fillRect(0, 0, canvasW, canvasH);
 
   ctx.lineWidth = 1;
-  // Vertical grid lines — labeled Y (bottom)
+  // Vertical grid lines — labeled X (bottom)
   for (let v = -XY_RANGE; v <= XY_RANGE; v += GRID_STEP) {
-    const p = w2c(0, v);
+    const p = w2c(v, 0);
     const isOrigin = Math.abs(v) < 0.5;
-    ctx.strokeStyle = isOrigin ? 'rgba(22,163,74,.35)' : 'rgba(0,0,0,.06)';
+    ctx.strokeStyle = isOrigin ? 'rgba(220,38,38,.35)' : 'rgba(0,0,0,.06)';
     ctx.beginPath(); ctx.moveTo(p.x, MARGIN); ctx.lineTo(p.x, MARGIN + dh); ctx.stroke();
     ctx.fillStyle = 'rgba(0,0,0,.3)';
     ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(v, p.x, canvasH - MARGIN / 4 + 2);
   }
-  // Horizontal grid lines — labeled X (left)
+  // Horizontal grid lines — labeled Y (left)
   for (let v = -XY_RANGE; v <= XY_RANGE; v += GRID_STEP) {
-    const p = w2c(v, 0);
+    const p = w2c(0, v);
     const isOrigin = Math.abs(v) < 0.5;
-    ctx.strokeStyle = isOrigin ? 'rgba(220,38,38,.35)' : 'rgba(0,0,0,.06)';
+    ctx.strokeStyle = isOrigin ? 'rgba(22,163,74,.35)' : 'rgba(0,0,0,.06)';
     ctx.beginPath(); ctx.moveTo(MARGIN, p.y); ctx.lineTo(canvasW - MARGIN_R, p.y); ctx.stroke();
     ctx.fillStyle = 'rgba(0,0,0,.3)';
     ctx.font = '10px system-ui, sans-serif';
@@ -546,16 +550,16 @@ function render() {
     ctx.fillText(v, MARGIN - 6, p.y + 3);
   }
 
-  // Y label at bottom, X label on left
+  // X label at bottom, Y label on left
   ctx.font = 'bold 12px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#16a34a';
-  ctx.fillText('Y', MARGIN + dw / 2, canvasH - 2);
+  ctx.fillStyle = '#dc2626';
+  ctx.fillText('X', MARGIN + dw / 2, canvasH - 2);
   ctx.save();
   ctx.translate(10, canvasH / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = '#dc2626';
-  ctx.fillText('X', 0, 0);
+  ctx.fillStyle = '#16a34a';
+  ctx.fillText('Y', 0, 0);
   ctx.restore();
 
   if (boundary.outer.length > 2) {
@@ -694,7 +698,7 @@ function onPosInput(axis) {
   let v = parseFloat(el.value);
   if (isNaN(v)) v = 0;
   if (axis === 'z') {
-    v = clamp(v, -400, homeXYZ.z);
+    v = clamp(v, homeXYZ.z, 400);
     pos.z = v;
     document.getElementById('sliderZ').value = v;
     document.getElementById('zVal').textContent = v;
@@ -928,9 +932,9 @@ async function init() {
   await loadGeometry();
   await loadHomePosition();
 
-  const zMax = Math.round(homeXYZ.z);
-  document.getElementById('sliderZ').max = zMax;
-  document.getElementById('zTickMax').textContent = zMax;
+  const zMin = Math.round(homeXYZ.z);
+  document.getElementById('sliderZ').min = zMin;
+  document.getElementById('zTickMax').textContent = zMin;
 
   pos.x = homeXYZ.x;
   pos.y = homeXYZ.y;

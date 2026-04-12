@@ -9,6 +9,10 @@ Supports both joint-space and Cartesian-space motion.  Cartesian
 commands run inverse kinematics on the host and send joint angles
 to the firmware.
 
+Coordinate frame (see delta_kinematics.py):
+  +X toward arm 1, +Z downward, +Y right-hand rule.
+  Workspace is at z > 0 (below the base plate).
+
 Usage::
 
     from delta_robot import DeltaRobot
@@ -19,11 +23,11 @@ Usage::
         robot.wait_until_done()
 
         # Cartesian — delta only
-        robot.move_to_xyz(50, 0, -200)
+        robot.move_to_xyz(0, 0, 200)
         robot.wait_until_done()
 
         # Cartesian — gantry + delta combined
-        robot.move_to_position(gantry_x=400, x=50, y=0, z=-200)
+        robot.move_to_position(gantry_x=400, x=0, y=0, z=200)
         robot.wait_until_done()
 
         robot.grip_close()
@@ -431,7 +435,7 @@ class DeltaRobot:
 
         Args:
             x, y, z:   Target position in the delta robot frame (mm).
-                        Z is negative below the base plate.
+                        Z is positive below the base plate.
             validate:   If True (default), raise on out-of-range angles.
 
         Returns:

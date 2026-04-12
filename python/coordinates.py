@@ -7,27 +7,27 @@ This module documents the world frame and defines home positions for:
   - Gripper (open position)
 
 Coordinate system
-----------------
+-----------------
 
   World / machine frame (right-handed, mm):
 
-    - X_world = gantry position along the linear rail.
+    - Gantry axis = linear rail.
       • 0 = endstop pressed (home).
       • Positive = travel away from endstop (up to GANTRY_X_MAX mm).
-      • On the fourth (gantry) motor, "forward" = anticlockwise rotation
-        when viewed from the motor shaft, which increases gantry position.
+      • Same direction as +X in the delta frame.
 
-    - Y, Z = delta robot frame (fixed to the delta base).
+    - Delta robot frame (fixed to the delta base):
       • Origin at the centre of the delta base plate.
-      • Z points downward (workspace has negative z).
-      • Y axis direction is fixed by the delta geometry (see delta_kinematics).
+      • +X toward arm 1 (motor 1), same direction as gantry travel.
+      • +Z downward (workspace at positive z).
+      • +Y completes the right-hand rule.
 
   Full end-effector pose in world:
 
     (gantry_x, x, y, z)
-    - gantry_x: position along the rail (mm), 0 at endstop, max 500 mm.
+    - gantry_x: position along the rail (mm), 0 at endstop.
     - (x, y, z): delta end-effector position in the delta frame (mm).
-      Same convention as DeltaKinematics: z negative below the base.
+      z > 0 = below the base plate.
 
   Gripper:
 
