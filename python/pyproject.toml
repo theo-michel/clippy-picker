@@ -13,4 +13,5 @@ dependencies = [
     "pyrealsense2-macosx>=2.54.2,<2.56; sys_platform == 'darwin'",
     "pyrealsense2; sys_platform != 'darwin'",
     "pyserial>=3.5",
+    "ultralytics>=8.3.0",
 ]

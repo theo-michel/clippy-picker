@@ -45,7 +45,10 @@ class RealsenseCamera:
         self._depth_scale: float = 0.0
         self._intrinsics = None
         self._overlay_aruco = False
+        self._overlay_detections = False
         self._aruco_detector: cv2.aruco.ArucoDetector | None = None
+        self._detector = None
+        self._latest_detections: list = []
 
     @property
     def running(self) -> bool:
@@ -78,13 +81,17 @@ class RealsenseCamera:
             self._pipeline = None
         log.info("Camera stopped")
 
-    def set_overlay(self, *, aruco: bool = False) -> None:
-        """Toggle ArUco marker overlay on the MJPEG stream."""
+    def set_overlay(self, *, aruco: bool = False, detections: bool = False) -> None:
+        """Toggle overlays on the MJPEG stream."""
         self._overlay_aruco = aruco
+        self._overlay_detections = detections
         if aruco and self._aruco_detector is None:
             aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
             params = cv2.aruco.DetectorParameters()
             self._aruco_detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+        if detections and self._detector is None:
+            from object_detection import ObjectDetector
+            self._detector = ObjectDetector()
 
     def _draw_aruco_overlay(self, img: np.ndarray) -> np.ndarray:
         """Draw detected ArUco markers onto the frame (in-place)."""
@@ -101,6 +108,21 @@ class RealsenseCamera:
             cv2.putText(img, f"ID {marker_id}", (cx - 20, cy - 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             cv2.drawMarker(img, (cx, cy), (0, 255, 0), cv2.MARKER_CROSS, 10, 1)
+        return img
+
+    def _draw_detection_overlay(self, img: np.ndarray) -> np.ndarray:
+        """Run YOLO and draw bounding boxes + labels onto the frame (in-place)."""
+        if self._detector is None:
+            return img
+        dets = self._detector.detect(img)
+        self._latest_detections = dets
+        for det in dets:
+            x1, y1, x2, y2 = det.bbox
+            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            cx, cy = int(det.center_uv[0]), int(det.center_uv[1])
+            cv2.drawMarker(img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 12, 2)
+            text = f"{det.label} {det.confidence:.0%}"
+            cv2.putText(img, text, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1)
         return img
 
     def _loop(self) -> None:
@@ -121,6 +143,8 @@ class RealsenseCamera:
                 display = img.copy()
                 if self._overlay_aruco:
                     self._draw_aruco_overlay(display)
+                if self._overlay_detections:
+                    self._draw_detection_overlay(display)
                 _, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 with self._lock:
                     self._jpeg = buf.tobytes()

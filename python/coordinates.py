@@ -36,7 +36,14 @@ Coordinate system
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+log = logging.getLogger(__name__)
 
 # ── Gantry ─────────────────────────────────────────────────────────────────
 
@@ -75,6 +82,16 @@ DELTA_HOME_ANGLE_3 = -15.0
 # Feetech position for "gripper home" (fully open). Should match firmware GRIP_OPEN_POS.
 GRIPPER_HOME_POSITION = 2900
 
+# ── Gripper TCP offset (E_T_g) ─────────────────────────────────────────────
+#
+# Transform from end-effector frame to gripper tool-centre-point (TCP).
+# The gripper is mounted with a 90° rotation about Z and the TCP sits
+# 98 mm below the EE origin (positive Z in the z-down convention).
+#
+# Only the translational part matters for position commands — the rotation
+# affects gripper orientation but not where the EE needs to be.
+TCP_OFFSET_FROM_EE = (0.0, 0.0, 98.0)  # (dx, dy, dz) in mm, delta frame
+
 # ── Calibration marker offset ──────────────────────────────────────────────
 #
 # Offset from the end-effector frame origin to the ArUco marker center,
@@ -105,3 +122,62 @@ class HomePosition:
 def get_default_home() -> HomePosition:
     """Return the default home definition."""
     return HomePosition()
+
+
+# ── Tray regions (world-frame, mm) ────────────────────────────────────────
+#
+# Each tray is an axis-aligned rectangle in world-frame XY (mm).
+#   world_x = gantry_x + delta_x   (gantry only moves along X)
+#   world_y = delta_y
+#
+# Layout: 2 rows x 3 columns.  Placeholder values — measure from the
+# actual setup by jogging the TCP to tray corners.
+
+
+@dataclass
+class TrayRegion:
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+
+    def contains(self, world_x: float, world_y: float) -> bool:
+        return self.x_min <= world_x <= self.x_max and self.y_min <= world_y <= self.y_max
+
+
+TRAY_REGIONS: dict[int, TrayRegion] = {
+    1: TrayRegion(x_min=0.0, x_max=100.0, y_min=50.0, y_max=150.0),     # top-left
+    2: TrayRegion(x_min=110.0, x_max=210.0, y_min=50.0, y_max=150.0),    # top-center
+    3: TrayRegion(x_min=220.0, x_max=320.0, y_min=50.0, y_max=150.0),    # top-right
+    4: TrayRegion(x_min=0.0, x_max=100.0, y_min=-150.0, y_max=-50.0),    # bottom-left
+    5: TrayRegion(x_min=110.0, x_max=210.0, y_min=-150.0, y_max=-50.0),  # bottom-center
+    6: TrayRegion(x_min=220.0, x_max=320.0, y_min=-150.0, y_max=-50.0),  # bottom-right
+}
+
+
+# ── Camera-to-robot transform ─────────────────────────────────────────────
+
+CALIBRATION_FILE = Path(__file__).parent / "calibration" / "camera_transform.json"
+
+_calib_R: np.ndarray | None = None
+_calib_t: np.ndarray | None = None
+
+
+def load_camera_transform(*, force: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Load R, t from the saved calibration file.  Caches after first call."""
+    global _calib_R, _calib_t
+    if _calib_R is not None and _calib_t is not None and not force:
+        return _calib_R, _calib_t
+    if not CALIBRATION_FILE.exists():
+        raise FileNotFoundError(f"No calibration file at {CALIBRATION_FILE}")
+    data = json.loads(CALIBRATION_FILE.read_text())
+    _calib_R = np.array(data["R"], dtype=np.float64)
+    _calib_t = np.array(data["t"], dtype=np.float64)
+    log.info("Loaded camera transform (RMSD=%.2f mm)", data.get("rmsd", -1))
+    return _calib_R, _calib_t
+
+
+def camera_to_robot(c_point: np.ndarray) -> np.ndarray:
+    """Transform a 3D point from camera frame to delta-robot frame (mm)."""
+    R, t = load_camera_transform()
+    return R @ c_point + t

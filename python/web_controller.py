@@ -28,6 +28,7 @@ import serial.tools.list_ports
 from delta_robot import DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
 from calibration.kabsch import kabsch
+from object_detection import ObjectDetector
 
 try:
     from camera import RealsenseCamera, realsense_available
@@ -80,6 +81,9 @@ CALIBRATION_FILE = CALIBRATION_DIR / "camera_transform.json"
 calibration_points: list[dict] = []  # [{"d_point": [x,y,z], "c_point": [x,y,z]}]
 calibration_result: dict | None = None  # {"R": ..., "t": ..., "rmsd": ..., ...}
 auto_cal_cancel = threading.Event()
+
+# Object detection
+detector = ObjectDetector()
 
 # Inverse kinematics (all dimensions in mm)
 ik_config = {
@@ -641,7 +645,10 @@ def api_camera_overlay():
     with camera_lock:
         if not camera or not camera.running:
             return jsonify({"ok": False, "message": "Camera not running"}), 400
-        camera.set_overlay(aruco=bool(data.get("aruco", False)))
+        camera.set_overlay(
+            aruco=bool(data.get("aruco", False)),
+            detections=bool(data.get("detections", False)),
+        )
     return jsonify({"ok": True})
 
 
@@ -918,6 +925,144 @@ def api_calibration_clear():
     calibration_points.clear()
     calibration_result = None
     return jsonify({"ok": True})
+
+
+# ====================================================================== #
+#  Object Detection
+# ====================================================================== #
+
+
+def _detections_to_world(detections_raw, cam):
+    """Convert raw detections to world-frame dicts.
+
+    Returns a list of dicts with pixel, delta-frame, and world-frame info.
+    Drops any detection that has no depth.
+    """
+    from coordinates import camera_to_robot
+
+    gantry_x = state.get("gantry_mm", 0.0)
+    results = []
+    for det in detections_raw:
+        u, v = int(round(det.center_uv[0])), int(round(det.center_uv[1]))
+        c_point = cam.deproject(u, v)
+        if c_point is None:
+            continue
+        d_point = camera_to_robot(np.array(c_point))
+        world_x = gantry_x + d_point[0]
+        world_y = float(d_point[1])
+        world_z = float(d_point[2])
+        results.append({
+            "pixel": [det.center_uv[0], det.center_uv[1]],
+            "bbox": list(det.bbox),
+            "label": det.label,
+            "confidence": round(det.confidence, 3),
+            "delta": [round(float(d_point[0]), 2), round(float(d_point[1]), 2), round(float(d_point[2]), 2)],
+            "world": [round(world_x, 2), round(world_y, 2), round(world_z, 2)],
+        })
+    return results
+
+
+@app.route("/api/detect/scan", methods=["POST"])
+def api_detect_scan():
+    """Run object detection on the current camera frame.
+
+    Body (optional): ``{"tray": 3}`` — filter to a specific tray.
+    """
+    from coordinates import TRAY_REGIONS
+
+    data = request.json or {}
+    tray = data.get("tray")
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Camera not running"}), 400
+        frame = camera.get_color_frame()
+
+    if frame is None:
+        return jsonify({"ok": False, "message": "No frame available"}), 400
+
+    raw = detector.detect(frame)
+    world_dets = _detections_to_world(raw, camera)
+
+    if tray is not None:
+        tray = int(tray)
+        region = TRAY_REGIONS.get(tray)
+        if region is None:
+            return jsonify({"ok": False, "message": f"Unknown tray {tray}"}), 400
+        world_dets = [d for d in world_dets if region.contains(d["world"][0], d["world"][1])]
+
+    return jsonify({"ok": True, "tray": tray, "detections": world_dets, "count": len(world_dets)})
+
+
+@app.route("/api/detect/pick", methods=["POST"])
+def api_detect_pick():
+    """Detect objects in a tray, pick one at random, and move the TCP there.
+
+    Body: ``{"tray": 3, "class_name": "stepper_motor"}``
+    ``tray`` is required.  ``class_name`` is an optional filter.
+    """
+    import random
+
+    from coordinates import GANTRY_X_MAX, GANTRY_X_MIN, TRAY_REGIONS
+
+    data = request.json or {}
+    tray = data.get("tray")
+    class_name = data.get("class_name")
+
+    if tray is None:
+        return jsonify({"ok": False, "message": "tray is required"}), 400
+    tray = int(tray)
+    region = TRAY_REGIONS.get(tray)
+    if region is None:
+        return jsonify({"ok": False, "message": f"Unknown tray {tray}"}), 400
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Camera not running"}), 400
+        frame = camera.get_color_frame()
+
+    if frame is None:
+        return jsonify({"ok": False, "message": "No frame available"}), 400
+
+    raw = detector.detect(frame)
+    world_dets = _detections_to_world(raw, camera)
+
+    # Filter to tray
+    world_dets = [d for d in world_dets if region.contains(d["world"][0], d["world"][1])]
+
+    # Optional class filter
+    if class_name:
+        world_dets = [d for d in world_dets if d["label"] == class_name]
+
+    if not world_dets:
+        return jsonify({"ok": False, "message": "No detections in tray", "tray": tray, "count": 0}), 404
+
+    chosen = random.choice(world_dets)
+    world_x, world_y, world_z = chosen["world"]
+
+    # Split into gantry + delta
+    gantry_target = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
+    delta_x = world_x - gantry_target
+    delta_y = world_y
+    delta_z = world_z
+
+    with robot_lock:
+        if robot is None:
+            return jsonify({"ok": False, "message": "Robot not connected"}), 400
+        try:
+            robot.move_to_position_tcp_and_wait(gantry_target, delta_x, delta_y, delta_z)
+        except (DeltaRobotError, ValueError) as e:
+            return jsonify({"ok": False, "message": str(e), "detection": chosen}), 400
+
+    return jsonify({
+        "ok": True,
+        "tray": tray,
+        "detection": chosen,
+        "motion": {
+            "gantry_x": round(gantry_target, 2),
+            "delta": [round(delta_x, 2), round(delta_y, 2), round(delta_z, 2)],
+        },
+    })
 
 
 # ====================================================================== #

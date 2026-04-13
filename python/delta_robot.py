@@ -48,6 +48,7 @@ from coordinates import (
     GANTRY_X_MAX as _GANTRY_X_MAX,
     GANTRY_X_MIN as _GANTRY_X_MIN,
     DELTA_KINEMATIC_AT_FIRMWARE_ZERO as _DELTA_OFFSET,
+    TCP_OFFSET_FROM_EE as _TCP_OFFSET,
 )
 
 logger = logging.getLogger(__name__)
@@ -457,6 +458,74 @@ class DeltaRobot:
     ) -> tuple[float, float, float]:
         """Convenience: ``move_to_xyz`` then block until done."""
         angles = self.move_to_xyz(x, y, z, validate=validate)
+        self.wait_until_done(timeout)
+        return angles
+
+    # ── TCP (gripper tip) motion ──────────────────────────────────────────
+
+    @staticmethod
+    def _tcp_to_ee(x: float, y: float, z: float) -> tuple[float, float, float]:
+        """Back-calculate the EE position required to place the TCP at (x, y, z)."""
+        return (x - _TCP_OFFSET[0], y - _TCP_OFFSET[1], z - _TCP_OFFSET[2])
+
+    def move_tcp(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        validate: bool = True,
+    ) -> tuple[float, float, float]:
+        """Move the gripper TCP to a Cartesian position (mm) in the delta frame.
+
+        Internally subtracts the TCP offset and commands the end-effector.
+
+        Returns:
+            (a1, a2, a3) — joint angles commanded (degrees).
+        """
+        return self.move_to_xyz(*self._tcp_to_ee(x, y, z), validate=validate)
+
+    def move_tcp_and_wait(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        validate: bool = True,
+        timeout: float = DONE_TIMEOUT,
+    ) -> tuple[float, float, float]:
+        """Convenience: ``move_tcp`` then block until done."""
+        angles = self.move_tcp(x, y, z, validate=validate)
+        self.wait_until_done(timeout)
+        return angles
+
+    def move_to_position_tcp(
+        self,
+        gantry_x: float,
+        x: float,
+        y: float,
+        z: float,
+        validate: bool = True,
+    ) -> tuple[float, float, float]:
+        """Move gantry + delta so the gripper TCP reaches (x, y, z).
+
+        Returns:
+            (a1, a2, a3) — joint angles commanded (degrees).
+        """
+        ex, ey, ez = self._tcp_to_ee(x, y, z)
+        return self.move_to_position(gantry_x, ex, ey, ez, validate=validate)
+
+    def move_to_position_tcp_and_wait(
+        self,
+        gantry_x: float,
+        x: float,
+        y: float,
+        z: float,
+        validate: bool = True,
+        timeout: float = DONE_TIMEOUT,
+    ) -> tuple[float, float, float]:
+        """Convenience: ``move_to_position_tcp`` then block until done."""
+        angles = self.move_to_position_tcp(
+            gantry_x, x, y, z, validate=validate,
+        )
         self.wait_until_done(timeout)
         return angles
 
