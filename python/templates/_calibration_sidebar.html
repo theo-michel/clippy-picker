@@ -25,12 +25,25 @@
     <button class="btn btn-primary calib-capture-btn" id="calBtnCapture" onclick="calCapturePoint()">
       Capture Point
     </button>
+    <button class="btn calib-capture-btn" id="calBtnAuto" onclick="calAutoStart()" style="margin-top:4px;">
+      Auto Calibrate
+    </button>
+    <div id="calAutoProgress" style="display:none;">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--border-subtle);overflow:hidden;">
+          <div id="calAutoBar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .3s;"></div>
+        </div>
+        <span id="calAutoLabel" style="font-size:.72rem;font-family:var(--mono);color:var(--text-dim);white-space:nowrap;">0/20</span>
+      </div>
+      <div id="calAutoMsg" class="status-msg" style="margin-top:4px;"></div>
+      <button class="btn btn-sm calib-btn-clear" id="calBtnAutoCancel" onclick="calAutoCancel()" style="width:100%;margin-top:4px;">Cancel</button>
+    </div>
     <div class="calib-point-count">
       <span id="calPointCount">0</span> points
       <span class="calib-point-hint">(&ge;4 required, 10+ recommended)</span>
     </div>
     <p class="calib-guidance">
-      Move the robot with the dashboard controls. Vary X, Y, and Z for best results.
+      Move the robot with the dashboard controls, or use Auto Calibrate for a spiral sweep.
       Ensure the ArUco marker is visible in the camera.
     </p>
     <div class="status-msg" id="calCaptureStatus"></div>
@@ -99,7 +112,9 @@ function calUpdateStatus() {
   robDot.className = 'calib-status-dot' + (conn ? ' on' : '');
   robLbl.textContent = conn ? 'Connected' : 'Disconnected';
 
-  $('calBtnCapture').disabled = !camOn || !conn;
+  const ready = camOn && conn && !calAutoRunning;
+  $('calBtnCapture').disabled = !ready;
+  $('calBtnAuto').disabled = !ready;
   $('calBtnSolve').disabled = calPoints.length < 4;
   $('calBtnSave').disabled = !calResult;
 }
@@ -253,6 +268,72 @@ async function calClear() {
     $('calCaptureStatus').textContent = '';
     $('calActionStatus').textContent = '';
   } catch {}
+}
+
+// ── Auto Calibrate ──────────────────────────────────────────────────
+let calAutoRunning = false;
+let calAutoSource = null;
+
+function calAutoStart() {
+  if (calAutoRunning) return;
+  calAutoRunning = true;
+  calResult = null;
+
+  $('calBtnAuto').disabled = true;
+  $('calBtnCapture').disabled = true;
+  $('calAutoProgress').style.display = '';
+  $('calAutoBar').style.width = '0%';
+  $('calAutoLabel').textContent = '0/?';
+  $('calAutoMsg').textContent = 'Starting...';
+  $('calAutoMsg').className = 'status-msg busy';
+
+  calAutoSource = new EventSource('/api/calibration/auto');
+
+  calAutoSource.onmessage = (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.type === 'moving') {
+      $('calAutoBar').style.width = ((d.index / d.total) * 100) + '%';
+      $('calAutoLabel').textContent = d.index + '/' + d.total;
+      $('calAutoMsg').textContent = 'Moving to (' + d.target.join(', ') + ')...';
+      $('calAutoMsg').className = 'status-msg busy';
+    } else if (d.type === 'captured') {
+      calPoints.push(d.point);
+      calRenderPoints();
+      $('calAutoBar').style.width = (((d.index + 1) / d.total) * 100) + '%';
+      $('calAutoLabel').textContent = (d.index + 1) + '/' + d.total;
+      $('calAutoMsg').textContent = 'Captured #' + d.num_points;
+      $('calAutoMsg').className = 'status-msg ok';
+    } else if (d.type === 'skip') {
+      $('calAutoMsg').textContent = 'Skip: ' + d.message;
+      $('calAutoMsg').className = 'status-msg err';
+    } else if (d.type === 'done') {
+      calAutoFinish('Done — ' + d.num_points + ' points captured', true);
+    } else if (d.type === 'cancelled') {
+      calAutoFinish('Cancelled', false);
+    } else if (d.type === 'error') {
+      calAutoFinish(d.message, false);
+    }
+  };
+
+  calAutoSource.onerror = () => {
+    calAutoFinish('Connection lost', false);
+  };
+}
+
+function calAutoFinish(msg, ok) {
+  calAutoRunning = false;
+  if (calAutoSource) { calAutoSource.close(); calAutoSource = null; }
+  $('calBtnAuto').disabled = false;
+  $('calAutoMsg').textContent = msg;
+  $('calAutoMsg').className = 'status-msg ' + (ok ? 'ok' : 'err');
+  $('calAutoBar').style.width = ok ? '100%' : $('calAutoBar').style.width;
+  setTimeout(() => { $('calAutoProgress').style.display = 'none'; }, 4000);
+  calRenderResult();
+  calUpdateStatus();
+}
+
+async function calAutoCancel() {
+  try { await apiPost('/api/calibration/auto/cancel'); } catch {}
 }
 
 window.addEventListener('load', () => {
