@@ -1,6 +1,6 @@
 """
 Picker — Web Controller
-Serves a browser UI on http://localhost:8080 that talks to the ESP32.
+A Flask web controller that serves a browser UI on http://localhost:8080 that talks to the ESP32.
 
 Usage:
     python web_controller.py                        # start disconnected
@@ -12,10 +12,8 @@ Requirements:
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
-import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -23,7 +21,15 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from flask import Flask, Response, jsonify, redirect, render_template, request
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    stream_with_context,
+)
 import serial.tools.list_ports
 
 from delta_robot import DeltaRobot, DeltaRobotError
@@ -80,6 +86,7 @@ CALIBRATION_DIR = Path(__file__).parent / "calibration"
 CALIBRATION_FILE = CALIBRATION_DIR / "camera_transform.json"
 calibration_points: list[dict] = []  # [{"d_point": [x,y,z], "c_point": [x,y,z]}]
 calibration_result: dict | None = None  # {"R": ..., "t": ..., "rmsd": ..., ...}
+auto_cal_cancel = threading.Event()
 
 # Inverse kinematics (all dimensions in mm)
 ik_config = {
@@ -797,6 +804,120 @@ def api_calibration_load():
         return jsonify({"ok": False, "message": str(e)}), 500
 
 
+@app.route("/api/calibration/auto")
+def api_calibration_auto():
+    """Auto-calibrate: move to ~20 spiral waypoints, capture at each. SSE stream."""
+    import math
+
+    global calibration_result
+
+    num_points = int(request.args.get("n", 20))
+
+    z_min = 200.0  # avoid high-up positions where depth is unreliable
+    z_max = 350.0
+    r_max = 90.0  # conservative XY radius to stay well within workspace
+
+    # Generate a spiral that sweeps XY while varying Z.
+    # Two full turns, radius grows linearly, Z oscillates between levels.
+    waypoints = []
+    for i in range(num_points):
+        t = i / max(num_points - 1, 1)
+        angle = t * 4 * math.pi  # 2 full turns
+        r = 20.0 + t * (r_max - 20.0)
+        x = round(r * math.cos(angle), 1)
+        y = round(r * math.sin(angle), 1)
+        z = round(z_min + (z_max - z_min) * (0.5 - 0.5 * math.cos(t * 3 * math.pi)), 1)
+        waypoints.append((x, y, z))
+
+    def _wait_idle(timeout: float = 15.0):
+        deadline = time.time() + timeout
+        time.sleep(0.4)
+        while time.time() < deadline:
+            if not robot.is_moving():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def generate():
+        global calibration_result
+        auto_cal_cancel.clear()
+
+        for i, (x, y, z) in enumerate(waypoints):
+            if auto_cal_cancel.is_set():
+                yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'type': 'moving', 'index': i, 'total': len(waypoints), 'target': [x, y, z]})}\n\n"
+
+            with robot_lock:
+                if robot is None:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Robot disconnected'})}\n\n"
+                    return
+                try:
+                    robot.move_to_xyz(x, y, z)
+                except (DeltaRobotError, ValueError) as e:
+                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': str(e)})}\n\n"
+                    continue
+
+            _wait_idle()
+            time.sleep(0.5)  # settle time for camera
+
+            if auto_cal_cancel.is_set():
+                yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
+                return
+
+            # Capture (inline version of api_calibration_capture logic)
+            from coordinates import MARKER_OFFSET_FROM_EE
+
+            offset = list(MARKER_OFFSET_FROM_EE)
+
+            with camera_lock:
+                if not camera or not camera.running:
+                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'Camera not running'})}\n\n"
+                    continue
+                markers = camera.detect_aruco("DICT_4X4_50")
+                if not markers:
+                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'No ArUco marker detected'})}\n\n"
+                    continue
+                marker = markers[0]
+                cu, cv = marker["center"]
+                c_point = camera.deproject(int(round(cu)), int(round(cv)))
+                if c_point is None:
+                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'No depth at marker'})}\n\n"
+                    continue
+
+            positions = state["positions"]
+            fk_pos = dk.forward(positions[0], positions[1], positions[2])
+            d_point = [
+                fk_pos[0] + offset[0],
+                fk_pos[1] + offset[1],
+                fk_pos[2] + offset[2],
+            ]
+
+            entry = {
+                "d_point": [round(v, 2) for v in d_point],
+                "c_point": [round(v, 2) for v in c_point],
+                "angles": [round(v, 2) for v in positions],
+                "marker_id": marker["id"],
+                "pixel": [round(cu, 1), round(cv, 1)],
+            }
+            calibration_points.append(entry)
+            calibration_result = None
+
+            yield f"data: {json.dumps({'type': 'captured', 'index': i, 'total': len(waypoints), 'point': entry, 'num_points': len(calibration_points)})}\n\n"
+
+        yield f"data: {json.dumps({'type': 'done', 'num_points': len(calibration_points)})}\n\n"
+
+    return Response(stream_with_context(generate()), content_type="text/event-stream")
+
+
+@app.route("/api/calibration/auto/cancel", methods=["POST"])
+def api_calibration_auto_cancel():
+    """Cancel a running auto-calibration."""
+    auto_cal_cancel.set()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/calibration/clear", methods=["POST"])
 def api_calibration_clear():
     """Discard all collected calibration points and results."""
@@ -812,31 +933,8 @@ def api_calibration_clear():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Picker — Web Controller")
-    parser.add_argument(
-        "--port", type=str, default=None, help="Serial port to pre-connect"
-    )
-    parser.add_argument("--baud", type=int, default=115200, help="Baud rate")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Web server host")
-    parser.add_argument("--web-port", type=int, default=8080, help="Web server port")
-    args = parser.parse_args()
-
-    global robot
-
-    if args.port:
-        try:
-            r = DeltaRobot(args.port, args.baud)
-            r.connect()
-            robot = r
-            state["connected"] = True
-            state["port"] = args.port
-            log.info("Pre-connected to %s from --port", args.port)
-        except Exception as e:
-            log.error("Could not connect to %s: %s", args.port, e)
-            log.info("Start without connection — use the web UI to connect.")
-
-    log.info("Starting web server at http://%s:%d", args.host, args.web_port)
-    app.run(host=args.host, port=args.web_port, debug=False, threaded=True)
+    log.info("Starting web server at http://0.0.0.0:8080")
+    app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)
 
 
 if __name__ == "__main__":
