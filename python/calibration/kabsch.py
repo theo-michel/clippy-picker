@@ -1,36 +1,8 @@
-"""Lightweight SE(3) transform utilities and Kabsch rigid-body registration."""
+"""Kabsch rigid-body registration (SVD-based point-cloud alignment)."""
 
 from __future__ import annotations
 
 import numpy as np
-
-
-def make_transform(R: np.ndarray, t: np.ndarray) -> np.ndarray:
-    """Build a 4x4 homogeneous matrix from a 3x3 rotation and 3-vector translation."""
-    T = np.eye(4)
-    T[:3, :3] = R
-    T[:3, 3] = np.asarray(t).ravel()
-    return T
-
-
-def invert_transform(T: np.ndarray) -> np.ndarray:
-    """Efficient SE(3) inverse: [R^T, -R^T t; 0 1]."""
-    R = T[:3, :3]
-    t = T[:3, 3]
-    Rt = R.T
-    return make_transform(Rt, -Rt @ t)
-
-
-def apply_transform(T: np.ndarray, points: np.ndarray) -> np.ndarray:
-    """Apply a 4x4 transform to an (N, 3) array of points. Also accepts a single (3,) vector."""
-    pts = np.asarray(points)
-    single = pts.ndim == 1
-    if single:
-        pts = pts.reshape(1, 3)
-    R = T[:3, :3]
-    t = T[:3, 3]
-    result = (R @ pts.T).T + t
-    return result.ravel() if single else result
 
 
 def kabsch(

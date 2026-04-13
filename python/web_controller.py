@@ -1,13 +1,6 @@
 """
 Picker — Web Controller
 A Flask web controller that serves a browser UI on http://localhost:8080 that talks to the ESP32.
-
-Usage:
-    python web_controller.py                        # start disconnected
-    python web_controller.py --port /dev/ttyUSB0    # pre-connect to port
-
-Requirements:
-    pip install -r requirements.txt
 """
 
 from __future__ import annotations
@@ -34,7 +27,7 @@ import serial.tools.list_ports
 
 from delta_robot import DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
-from transforms import kabsch, make_transform
+from calibration.kabsch import kabsch
 
 try:
     from camera import RealsenseCamera, realsense_available

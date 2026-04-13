@@ -38,7 +38,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import serial
 
@@ -253,26 +253,6 @@ class DeltaRobot:
     def home(self) -> None:
         """Move all axes to the current software zero (delta + gantry to 0)."""
         self._command_ok("HOME")
-
-    def home_full(
-        self,
-        home_gantry: bool = True,
-        home_delta: bool = True,
-        home_gripper: bool = True,
-    ) -> None:
-        """
-        Run the full homing sequence (gantry endstop, delta to home angles, gripper open).
-        """
-        from coordinates import get_default_home
-        from homing import run_homing_sequence
-
-        run_homing_sequence(
-            self,
-            get_default_home(),
-            home_gantry=home_gantry,
-            home_delta=home_delta,
-            home_gripper=home_gripper,
-        )
 
     # ── Gripper ──────────────────────────────────────────────────────────
 

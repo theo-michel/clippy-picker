@@ -107,4 +107,3 @@
 // ── Counts ──────────────────────────────────────────────────────────────────
 
 #define NUM_DELTA_MOTORS 3
-#define NUM_MOTORS 4

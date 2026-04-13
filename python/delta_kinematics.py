@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Tuple
 
 
 @dataclass
@@ -59,7 +58,7 @@ class DeltaKinematics:
     #  Public API
     # ------------------------------------------------------------------ #
 
-    def inverse(self, x: float, y: float, z: float) -> Tuple[float, float, float]:
+    def inverse(self, x: float, y: float, z: float) -> tuple[float, float, float]:
         """
         Compute joint angles for a desired end-effector position.
 
@@ -89,7 +88,7 @@ class DeltaKinematics:
         theta1_deg: float,
         theta2_deg: float,
         theta3_deg: float,
-    ) -> Tuple[float, float, float]:
+    ) -> tuple[float, float, float]:
         """
         Compute end-effector (x, y, z) from joint angles.
 
@@ -234,7 +233,7 @@ class DeltaKinematics:
     #  Rotation helpers (120° / 240° around Z)
     # ------------------------------------------------------------------ #
 
-    def _rotate_120(self, x: float, y: float) -> Tuple[float, float]:
+    def _rotate_120(self, x: float, y: float) -> tuple[float, float]:
         """Rotate (x, y) by +120° around Z."""
         cos120 = -0.5
         sin120 = self._sqrt3 / 2.0
@@ -243,7 +242,7 @@ class DeltaKinematics:
             x * sin120 + y * cos120,
         )
 
-    def _rotate_240(self, x: float, y: float) -> Tuple[float, float]:
+    def _rotate_240(self, x: float, y: float) -> tuple[float, float]:
         """Rotate (x, y) by +240° (≡ −120°) around Z."""
         cos240 = -0.5
         sin240 = -self._sqrt3 / 2.0

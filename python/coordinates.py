@@ -105,6 +105,3 @@ class HomePosition:
 def get_default_home() -> HomePosition:
     """Return the default home definition."""
     return HomePosition()
-
-
-DEFAULT_HOME = get_default_home()
