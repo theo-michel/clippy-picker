@@ -27,3 +27,7 @@ Thumbs.db
 
 # Intrinsics
 camera_intrinsics.md
+
+# Training dataset & runs
+python/dataset/
+python/runs/

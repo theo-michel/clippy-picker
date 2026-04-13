@@ -69,7 +69,9 @@ def main() -> None:
                 break
             if key == ord(" "):
                 path = out_dir / f"{next_idx:04d}.png"
-                cv2.imwrite(str(path), img)
+                ok_, buf = cv2.imencode(".png", img)
+                if ok_:
+                    path.write_bytes(buf.tobytes())
                 print(f"  saved {path.name}")
                 next_idx += 1
     finally:
