@@ -28,6 +28,11 @@ Thumbs.db
 # Intrinsics
 camera_intrinsics.md
 
-# Training dataset & runs
+# Training dataset, runs & pretrained weights
 python/dataset/
 python/runs/
+*.pt
+
+# MMlove stereo camera captures
+python/mmlove-camera/snapshots/
+python/mmlove-camera/calibration_frames/

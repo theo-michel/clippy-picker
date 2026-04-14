@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train a YOLOv8n model on the labelled Raspberry Pi Case dataset.
+"""Train a YOLO11n model on the labelled Raspberry Pi Case dataset.
 
 Automatically creates a train/val split (80/20) from the exported
 Roboflow dataset if no ``valid/`` folder exists yet.
@@ -58,7 +58,7 @@ def main() -> None:
     patched = DATASET_DIR / "data_train.yaml"
     patched.write_text(yaml.dump(cfg, default_flow_style=False))
 
-    model = YOLO("yolov8n.pt")
+    model = YOLO("yolo11n.pt")
     model.train(
         data=str(patched),
         epochs=100,
