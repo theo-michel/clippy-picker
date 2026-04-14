@@ -197,14 +197,19 @@ class DeltaRobot:
     def _command(self, cmd: str) -> str:
         """Send a command and return the first response line.
 
-        Flushes any stale data in the receive buffer before sending so
-        late-arriving responses from previous (timed-out) commands never
-        get misattributed to this one.
+        The entire flush→send→read cycle is held under lock so concurrent
+        callers (e.g. the status poller) cannot interleave commands.
         """
         assert self._ser, "Not connected"
-        self._ser.reset_input_buffer()
-        self._send(cmd)
-        line = self._readline()
+        with self._lock:
+            self._ser.reset_input_buffer()
+            self._ser.write(f"{cmd}\n".encode())
+            self._ser.flush()
+            try:
+                raw = self._ser.readline()
+                line = raw.decode(errors="replace").strip() or None
+            except serial.SerialException:
+                line = None
         if line is None:
             raise TimeoutError(f"No response to: {cmd}")
         if line.startswith("ERR:"):

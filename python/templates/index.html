@@ -405,6 +405,7 @@
     <div class="topbar-left">
     <button class="btn btn-primary btn-sm" onclick="openHomingWizard()">Homing Wizard</button>
     <button class="btn btn-sm" onclick="openCalibSidebar()">Calibrate</button>
+    <button class="btn btn-sm" onclick="openPickTest()">Pick Test</button>
       <span class="logo">PICKER</span>
     <div style="width:6px;"></div>
       <div class="status-dot" id="statusDot"></div>
@@ -422,7 +423,10 @@
     <div class="pane">
       <div class="pane-header">
         <span class="pane-title">Camera Feed</span>
-        <button class="btn btn-sm" id="btnCamera" onclick="toggleCamera()">Start</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" id="btnDetect" onclick="toggleDetect()" style="display:none;">Detect</button>
+          <button class="btn btn-sm" id="btnCamera" onclick="toggleCamera()">Start</button>
+        </div>
       </div>
       <div class="camera-body" id="cameraBody">
         <div class="camera-placeholder" id="cameraPlaceholder">
@@ -879,6 +883,7 @@ async function toggleCamera() {
   if (cameraRunning) {
     btn.textContent = 'Start'; feed.style.display = 'none'; feed.src = '';
     ph.style.display = 'flex'; msg.textContent = 'Camera off'; cameraRunning = false;
+    detectOn = false; $('btnDetect').style.display = 'none'; $('btnDetect').textContent = 'Detect'; $('btnDetect').classList.remove('btn-primary');
     try { await fetch('/api/camera/stop', { method: 'POST' }); } catch {} return;
   }
   btn.textContent = 'Starting\u2026'; btn.disabled = true; msg.textContent = 'Starting camera\u2026';
@@ -887,15 +892,26 @@ async function toggleCamera() {
     const data = await res.json();
     if (!data.ok) { msg.textContent = data.message || 'Failed'; btn.textContent = 'Start'; btn.disabled = false; return; }
     cameraRunning = true; btn.textContent = 'Stop'; btn.disabled = false;
+    $('btnDetect').style.display = '';
     ph.style.display = 'none'; feed.style.display = 'block'; feed.src = '/api/camera/feed?' + Date.now();
     feed.onerror = () => { if (cameraRunning) { feed.style.display = 'none'; ph.style.display = 'flex'; msg.textContent = 'Feed lost'; } };
   } catch { msg.textContent = 'Connection error'; btn.textContent = 'Start'; btn.disabled = false; }
 }
+let detectOn = false;
+async function toggleDetect() {
+  detectOn = !detectOn;
+  const btn = $('btnDetect');
+  btn.textContent = detectOn ? 'Detect ON' : 'Detect';
+  btn.classList.toggle('btn-primary', detectOn);
+  try { await apiPost('/api/camera/overlay', { detections: detectOn }); } catch {}
+}
+
 async function checkCameraStatus() {
   try {
     const data = await (await fetch('/api/camera/status')).json();
     if (data.running) {
       cameraRunning = true; $('btnCamera').textContent = 'Stop';
+      $('btnDetect').style.display = '';
       $('cameraPlaceholder').style.display = 'none';
       const feed = $('cameraFeed'); feed.style.display = 'block'; feed.src = '/api/camera/feed?' + Date.now();
     }
@@ -977,9 +993,103 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if ($('homingModal').classList.contains('open')) closeHomingWizard();
     if ($('calibSidebar').classList.contains('open')) closeCalibSidebar();
+    if ($('pickTestOverlay').classList.contains('open')) closePickTest();
   }
 });
 window.addEventListener('load', init);
   </script>
+
+<!-- ── Pick Test Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="pickTestOverlay" onclick="if(event.target===this)closePickTest()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <span class="modal-title">Pick Test</span>
+      <button class="modal-close" onclick="closePickTest()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="position:relative;background:#000;border-radius:8px;overflow:hidden;">
+        <img id="pickCamFeed" style="width:100%;display:none;border-radius:8px;">
+        <div id="pickCamOff" style="text-align:center;padding:32px 16px;color:#666;font-size:.8rem;">
+          Camera feed — start camera first
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:.78rem;font-weight:600;color:var(--text-dim);">Scan gantry</label>
+        <input id="pickGantryX" type="number" value="450" min="0" max="625" step="10" class="gantry-input">
+        <span class="gantry-unit">mm</span>
+        <label style="font-size:.78rem;font-weight:600;color:var(--text-dim);margin-left:8px;">Hover offset</label>
+        <input id="pickApproachOffset" type="number" value="50" min="10" max="200" step="5" class="gantry-input">
+        <span class="gantry-unit">mm above</span>
+      </div>
+      <div id="pickLog" style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.75rem;min-height:100px;max-height:200px;overflow-y:auto;line-height:1.8;color:var(--text-dim);white-space:pre-wrap;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" id="btnPickRun" onclick="runPickTest()">Run</button>
+        <button class="btn" id="btnPickCancel" onclick="cancelPickTest()" style="display:none;color:var(--red);border-color:rgba(220,38,38,.3);">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openPickTest() {
+  $('pickTestOverlay').classList.add('open');
+  if (cameraRunning) {
+    $('pickCamFeed').src = '/api/camera/feed?' + Date.now();
+    $('pickCamFeed').style.display = 'block';
+    $('pickCamOff').style.display = 'none';
+    apiPost('/api/camera/overlay', { detections: true });
+  } else {
+    $('pickCamFeed').style.display = 'none';
+    $('pickCamOff').style.display = '';
+  }
+}
+function closePickTest() {
+  if (pickES) return;
+  $('pickTestOverlay').classList.remove('open');
+  $('pickCamFeed').src = '';
+  if (cameraRunning) apiPost('/api/camera/overlay', { detections: false });
+}
+
+let pickES = null;
+
+function runPickTest() {
+  const gx = parseFloat($('pickGantryX').value) || 450;
+  const ao = parseFloat($('pickApproachOffset').value) || 50;
+  const log = $('pickLog');
+  log.innerHTML = '';
+  $('btnPickRun').disabled = true;
+  $('btnPickCancel').style.display = '';
+
+  pickES = new EventSource(`/api/test/pick?gantry_x=${gx}&approach_offset=${ao}`);
+  pickES.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'step') {
+      log.innerHTML += `<span style="color:var(--accent)">[${d.index}/${d.total}]</span> <b>${d.step}</b>  ${d.detail||''}\n`;
+    } else if (d.type === 'error') {
+      log.innerHTML += `<span style="color:var(--red)">ERROR: ${d.message}</span>\n`;
+      pickDone();
+    } else if (d.type === 'done') {
+      log.innerHTML += `<span style="color:var(--green)"><b>${d.message}</b></span>\n`;
+      pickDone();
+    } else if (d.type === 'cancelled') {
+      log.innerHTML += `<span style="color:var(--orange)">Cancelled</span>\n`;
+      pickDone();
+    }
+    log.scrollTop = log.scrollHeight;
+  };
+  pickES.onerror = () => pickDone();
+}
+
+function pickDone() {
+  if (pickES) { pickES.close(); pickES = null; }
+  $('btnPickRun').disabled = false;
+  $('btnPickCancel').style.display = 'none';
+}
+
+function cancelPickTest() {
+  fetch('/api/test/pick/cancel', { method: 'POST' });
+}
+</script>
+
 </body>
 </html>

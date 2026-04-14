@@ -8,6 +8,7 @@ Gripper gripper;
 bool Gripper::init() {
     Serial2.begin(STS_BAUD, SERIAL_8N1, STS_RX_PIN, STS_TX_PIN);
     st.pSerial = &Serial2;
+    delay(100);
 
     for (int attempt = 0; attempt < 5; attempt++) {
         delay(200);

@@ -84,6 +84,7 @@ auto_cal_cancel = threading.Event()
 
 # Object detection
 detector = ObjectDetector()
+pick_test_cancel = threading.Event()
 
 # Inverse kinematics (all dimensions in mm)
 ik_config = {
@@ -806,32 +807,33 @@ def api_calibration_load():
 
 @app.route("/api/calibration/auto")
 def api_calibration_auto():
-    """Auto-calibrate: move to ~20 spiral waypoints, capture at each. SSE stream."""
+    """Auto-calibrate: move to ~100 spiral waypoints, capture at each. SSE stream."""
     import math
 
     global calibration_result
 
-    num_points = int(request.args.get("n", 20))
+    num_points = int(request.args.get("n", 100))
 
-    z_min = 200.0  # avoid high-up positions where depth is unreliable
+    z_min = 250.0  # stay away from camera — depth is unreliable at low Z
     z_max = 350.0
-    r_max = 90.0  # conservative XY radius to stay well within workspace
+    r_max = 90.0
 
-    # Generate a spiral that sweeps XY while varying Z.
-    # Two full turns, radius grows linearly, Z oscillates between levels.
+    CAL_SPEED = 800.0   # steps/s — slow enough to avoid wiggle
+    CAL_ACCEL = 600.0   # steps/s² — gentle ramps
+
     waypoints = []
     for i in range(num_points):
         t = i / max(num_points - 1, 1)
-        angle = t * 4 * math.pi  # 2 full turns
+        angle = t * 6 * math.pi  # 3 full turns
         r = 20.0 + t * (r_max - 20.0)
         x = round(r * math.cos(angle), 1)
         y = round(r * math.sin(angle), 1)
-        z = round(z_min + (z_max - z_min) * (0.5 - 0.5 * math.cos(t * 3 * math.pi)), 1)
+        z = round(z_min + (z_max - z_min) * (0.5 - 0.5 * math.cos(t * 5 * math.pi)), 1)
         waypoints.append((x, y, z))
 
     def _wait_idle(timeout: float = 15.0):
         deadline = time.time() + timeout
-        time.sleep(0.4)
+        time.sleep(0.6)
         while time.time() < deadline:
             if not robot.is_moving():
                 return True
@@ -842,71 +844,84 @@ def api_calibration_auto():
         global calibration_result
         auto_cal_cancel.clear()
 
-        for i, (x, y, z) in enumerate(waypoints):
-            if auto_cal_cancel.is_set():
-                yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
+        # Slow the robot down for calibration; restore original speed at the end.
+        saved_speed = state.get("speed_rpm")
+        with robot_lock:
+            if robot is None:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Robot disconnected'})}\n\n"
                 return
+            robot.set_delta_speed(CAL_SPEED)
+            robot.set_delta_accel(CAL_ACCEL)
 
-            yield f"data: {json.dumps({'type': 'moving', 'index': i, 'total': len(waypoints), 'target': [x, y, z]})}\n\n"
-
-            with robot_lock:
-                if robot is None:
-                    yield f"data: {json.dumps({'type': 'error', 'message': 'Robot disconnected'})}\n\n"
+        try:
+            for i, (x, y, z) in enumerate(waypoints):
+                if auto_cal_cancel.is_set():
+                    yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
                     return
-                try:
-                    robot.move_to_xyz(x, y, z)
-                except (DeltaRobotError, ValueError) as e:
-                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': str(e)})}\n\n"
-                    continue
 
-            _wait_idle()
-            time.sleep(0.5)  # settle time for camera
+                yield f"data: {json.dumps({'type': 'moving', 'index': i, 'total': len(waypoints), 'target': [x, y, z]})}\n\n"
 
-            if auto_cal_cancel.is_set():
-                yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
-                return
+                with robot_lock:
+                    if robot is None:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Robot disconnected'})}\n\n"
+                        return
+                    try:
+                        robot.move_to_xyz(x, y, z)
+                    except (DeltaRobotError, ValueError) as e:
+                        yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': str(e)})}\n\n"
+                        continue
 
-            # Capture (inline version of api_calibration_capture logic)
-            from coordinates import MARKER_OFFSET_FROM_EE
+                _wait_idle()
+                time.sleep(0.8)  # settle time for camera
 
-            offset = list(MARKER_OFFSET_FROM_EE)
+                if auto_cal_cancel.is_set():
+                    yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
+                    return
 
-            with camera_lock:
-                if not camera or not camera.running:
-                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'Camera not running'})}\n\n"
-                    continue
-                markers = camera.detect_aruco("DICT_4X4_50")
-                if not markers:
-                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'No ArUco marker detected'})}\n\n"
-                    continue
-                marker = markers[0]
-                cu, cv = marker["center"]
-                c_point = camera.deproject(int(round(cu)), int(round(cv)))
-                if c_point is None:
-                    yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'No depth at marker'})}\n\n"
-                    continue
+                from coordinates import MARKER_OFFSET_FROM_EE
 
-            positions = state["positions"]
-            fk_pos = dk.forward(positions[0], positions[1], positions[2])
-            d_point = [
-                fk_pos[0] + offset[0],
-                fk_pos[1] + offset[1],
-                fk_pos[2] + offset[2],
-            ]
+                offset = list(MARKER_OFFSET_FROM_EE)
 
-            entry = {
-                "d_point": [round(v, 2) for v in d_point],
-                "c_point": [round(v, 2) for v in c_point],
-                "angles": [round(v, 2) for v in positions],
-                "marker_id": marker["id"],
-                "pixel": [round(cu, 1), round(cv, 1)],
-            }
-            calibration_points.append(entry)
-            calibration_result = None
+                with camera_lock:
+                    if not camera or not camera.running:
+                        yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'Camera not running'})}\n\n"
+                        continue
+                    markers = camera.detect_aruco("DICT_4X4_50")
+                    if not markers:
+                        yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'No ArUco marker detected'})}\n\n"
+                        continue
+                    marker = markers[0]
+                    cu, cv = marker["center"]
+                    c_point = camera.deproject(int(round(cu)), int(round(cv)))
+                    if c_point is None:
+                        yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': 'No depth at marker'})}\n\n"
+                        continue
 
-            yield f"data: {json.dumps({'type': 'captured', 'index': i, 'total': len(waypoints), 'point': entry, 'num_points': len(calibration_points)})}\n\n"
+                positions = state["positions"]
+                fk_pos = dk.forward(positions[0], positions[1], positions[2])
+                d_point = [
+                    fk_pos[0] + offset[0],
+                    fk_pos[1] + offset[1],
+                    fk_pos[2] + offset[2],
+                ]
 
-        yield f"data: {json.dumps({'type': 'done', 'num_points': len(calibration_points)})}\n\n"
+                entry = {
+                    "d_point": [round(v, 2) for v in d_point],
+                    "c_point": [round(v, 2) for v in c_point],
+                    "angles": [round(v, 2) for v in positions],
+                    "marker_id": marker["id"],
+                    "pixel": [round(cu, 1), round(cv, 1)],
+                }
+                calibration_points.append(entry)
+                calibration_result = None
+
+                yield f"data: {json.dumps({'type': 'captured', 'index': i, 'total': len(waypoints), 'point': entry, 'num_points': len(calibration_points)})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done', 'num_points': len(calibration_points)})}\n\n"
+        finally:
+            with robot_lock:
+                if robot is not None and saved_speed is not None:
+                    robot.set_delta_speed(saved_speed)
 
     return Response(stream_with_context(generate()), content_type="text/event-stream")
 
@@ -1063,6 +1078,184 @@ def api_detect_pick():
             "delta": [round(delta_x, 2), round(delta_y, 2), round(delta_z, 2)],
         },
     })
+
+
+# ====================================================================== #
+#  Pick Test (SSE)
+# ====================================================================== #
+
+
+@app.route("/api/test/pick")
+def api_test_pick():
+    """Run a pick-and-return test sequence.  Streams SSE progress events."""
+    scan_gx = float(request.args.get("gantry_x", 450))
+    approach_offset = float(request.args.get("approach_offset", 50))
+
+    def _wait(timeout: float = 30.0) -> bool:
+        deadline = time.time() + timeout
+        time.sleep(0.3)
+        while time.time() < deadline:
+            if not robot.is_moving():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def _evt(tp: str, **kw) -> str:
+        return f"data: {json.dumps({'type': tp, **kw})}\n\n"
+
+    def _cmd(fn) -> str | None:
+        """Run *fn* under robot_lock.  Returns error string or None."""
+        with robot_lock:
+            if robot is None:
+                return "Robot disconnected"
+            try:
+                fn()
+                return None
+            except Exception as e:
+                return str(e)
+
+    def generate():
+        pick_test_cancel.clear()
+        from coordinates import (
+            DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3,
+            GANTRY_X_MIN, GANTRY_X_MAX,
+            camera_to_robot,
+        )
+        home_angles = (DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3)
+        N = 8
+
+        def step(i, name, detail=""):
+            return _evt("step", step=name, detail=detail, index=i, total=N)
+
+        with robot_lock:
+            if robot is None:
+                yield _evt("error", message="Robot not connected"); return
+        with camera_lock:
+            if not camera or not camera.running:
+                yield _evt("error", message="Start the camera first"); return
+
+        # 1 — Prepare
+        yield step(1, "Prepare", "Gripper open, delta → home")
+        err = _cmd(lambda: robot.grip_open())
+        if err: yield _evt("error", message=err); return
+        err = _cmd(lambda: robot.move_delta(*home_angles))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
+
+        # 2 — Scan
+        yield step(2, "Scan", f"Gantry → {scan_gx:.0f} mm")
+        err = _cmd(lambda: robot.move_gantry(scan_gx))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        time.sleep(1.0)
+
+        with camera_lock:
+            frame = camera.get_color_frame() if camera and camera.running else None
+        if frame is None:
+            yield _evt("error", message="No camera frame"); return
+
+        dets = detector.detect(frame, conf=0.4)
+        if not dets:
+            yield _evt("error", message="No objects detected"); return
+
+        best = max(dets, key=lambda d: d.confidence)
+        u, v = int(round(best.center_uv[0])), int(round(best.center_uv[1]))
+        with camera_lock:
+            c_point = camera.deproject(u, v, patch=5) if camera else None
+        if c_point is None:
+            yield _evt("error", message=f"No depth at pixel ({u}, {v})"); return
+
+        d_pt = camera_to_robot(np.array(c_point))
+        dx, dy, dz = float(d_pt[0]), float(d_pt[1]), float(d_pt[2])
+
+        # Convert to world X, then split into gantry + small delta offset
+        world_x = scan_gx + dx
+        gantry_pick = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
+        pick_dx = world_x - gantry_pick
+        pick_dy = dy
+        pick_dz = dz
+        hover_z = pick_dz - approach_offset
+
+        yield step(2, "Scan",
+                   f"{best.label} ({best.confidence:.0%}) — "
+                   f"world X={world_x:.0f}, gantry→{gantry_pick:.0f}, "
+                   f"delta ({pick_dx:.1f}, {pick_dy:.1f}, {pick_dz:.1f})")
+
+        # Pre-check reachability at both hover and pick depth
+        from coordinates import TCP_OFFSET_FROM_EE
+        for label, z in [("hover", hover_z), ("pick", pick_dz)]:
+            ee = (pick_dx - TCP_OFFSET_FROM_EE[0],
+                  pick_dy - TCP_OFFSET_FROM_EE[1],
+                  z - TCP_OFFSET_FROM_EE[2])
+            try:
+                a1, a2, a3 = robot.ik.inverse(*ee)
+                if not all(-21.8 <= a <= 80.0 for a in (a1, a2, a3)):
+                    raise ValueError(f"angles ({a1:.1f}, {a2:.1f}, {a3:.1f}) outside limits")
+            except (ValueError, Exception) as e:
+                yield _evt("error",
+                           message=f"Target unreachable at {label} Z={z:.1f}: {e}")
+                return
+
+        time.sleep(0.5)
+        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
+
+        # 3 — Position gantry above object, delta to hover height
+        yield step(3, "Approach",
+                   f"Gantry → {gantry_pick:.0f}, TCP → ({pick_dx:.1f}, {pick_dy:.1f}, {hover_z:.1f})")
+        err = _cmd(lambda: robot.move_gantry(gantry_pick))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        err = _cmd(lambda: robot.move_tcp(pick_dx, pick_dy, hover_z))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
+
+        # 4 — Descend (only Z changes — smooth vertical drop)
+        yield step(4, "Descend", f"TCP → ({pick_dx:.1f}, {pick_dy:.1f}, {pick_dz:.1f})")
+        err = _cmd(lambda: robot.move_tcp(pick_dx, pick_dy, pick_dz))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        time.sleep(0.3)
+
+        # 5 — Grab
+        yield step(5, "Grab", "Closing gripper")
+        err = _cmd(lambda: robot.grip_close())
+        if err: yield _evt("error", message=err); return
+        time.sleep(0.5)
+        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
+
+        # 6 — Lift (straight up to hover height)
+        yield step(6, "Lift", f"TCP → ({pick_dx:.1f}, {pick_dy:.1f}, {hover_z:.1f})")
+        err = _cmd(lambda: robot.move_tcp(pick_dx, pick_dy, hover_z))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
+
+        # 7 — Return home
+        yield step(7, "Return home", "Delta → home, gantry → 0")
+        err = _cmd(lambda: robot.move_delta(*home_angles))
+        if err: yield _evt("error", message=err); return
+        _wait()
+        err = _cmd(lambda: robot.move_gantry(0.0))
+        if err: yield _evt("error", message=err); return
+        _wait()
+
+        # 8 — Release
+        yield step(8, "Release", "Opening gripper")
+        err = _cmd(lambda: robot.grip_open())
+        if err: yield _evt("error", message=err); return
+        time.sleep(0.5)
+
+        yield _evt("done", message="Pick test complete!")
+
+    return Response(stream_with_context(generate()), content_type="text/event-stream")
+
+
+@app.route("/api/test/pick/cancel", methods=["POST"])
+def api_test_pick_cancel():
+    pick_test_cancel.set()
+    return jsonify({"ok": True})
 
 
 # ====================================================================== #

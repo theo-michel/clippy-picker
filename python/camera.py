@@ -205,16 +205,29 @@ class RealsenseCamera:
             })
         return results
 
-    def deproject(self, u: int, v: int) -> tuple[float, float, float] | None:
-        """Pixel (u, v) -> 3D point in camera frame (mm). None if no depth."""
+    def deproject(self, u: int, v: int, *, patch: int = 0) -> tuple[float, float, float] | None:
+        """Pixel (u, v) -> 3D point in camera frame (mm). None if no depth.
+
+        Args:
+            patch: half-size of the depth sampling window.  0 = single pixel,
+                   e.g. 5 = 11×11 patch with median filtering.
+        """
         with self._lock:
             if self._depth_data is None or self._intrinsics is None:
                 return None
             h, w = self._depth_data.shape
             if not (0 <= v < h and 0 <= u < w):
                 return None
-            depth_m = self._depth_data[v, u] * self._depth_scale
+            if patch > 0:
+                v0, v1 = max(0, v - patch), min(h, v + patch + 1)
+                u0, u1 = max(0, u - patch), min(w, u + patch + 1)
+                region = self._depth_data[v0:v1, u0:u1].astype(np.float64) * self._depth_scale
+                valid = region[region > 0]
+                depth_m = float(np.median(valid)) if len(valid) > 0 else 0.0
+            else:
+                depth_m = self._depth_data[v, u] * self._depth_scale
+            intrinsics = self._intrinsics
         if depth_m <= 0:
             return None
-        pt = rs.rs2_deproject_pixel_to_point(self._intrinsics, [u, v], depth_m)  # type: ignore[union-attr]
+        pt = rs.rs2_deproject_pixel_to_point(intrinsics, [u, v], depth_m)  # type: ignore[union-attr]
         return (pt[0] * 1000, pt[1] * 1000, pt[2] * 1000)

@@ -10,7 +10,7 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-DEFAULT_WEIGHTS = Path(__file__).parent / "models" / "best.pt"
+DEFAULT_WEIGHTS = Path(__file__).parent / "runs" / "rpi_case" / "weights" / "best.pt"
 FALLBACK_WEIGHTS = "yolo11n.pt"
 
 
