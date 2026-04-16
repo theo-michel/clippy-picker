@@ -119,10 +119,6 @@ class HomePosition:
         return (self.delta_angle_1, self.delta_angle_2, self.delta_angle_3)
 
 
-def get_default_home() -> HomePosition:
-    """Return the default home definition."""
-    return HomePosition()
-
 
 # ── Tray regions (world-frame, mm) ────────────────────────────────────────
 #
@@ -157,7 +153,7 @@ TRAY_REGIONS: dict[int, TrayRegion] = {
 
 # ── Camera-to-robot transform ─────────────────────────────────────────────
 
-CALIBRATION_FILE = Path(__file__).parent / "calibration" / "camera_transform.json"
+CALIBRATION_FILE = Path(__file__).parent / "calibration" / "extrinsic" / "camera_transform.json"
 
 _calib_R: np.ndarray | None = None
 _calib_t: np.ndarray | None = None

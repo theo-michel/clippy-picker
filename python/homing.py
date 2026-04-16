@@ -81,14 +81,14 @@ def run_homing_sequence(
     """
     Run the full homing sequence.
 
-    Order: gantry first (so the delta is at a known X), then delta, then gripper.
+    Order: delta first (so the gantry is at a known X), then gantry, then gripper.
     Each step is started; call robot.wait_until_done() after if you want to block.
     """
-    if home_gantry:
-        home_gantry_axis(robot)
-        robot.wait_until_done()
     if home_delta:
         home_delta_arms(robot, home)
+        robot.wait_until_done()
+    if home_gantry:
+        home_gantry_axis(robot)
         robot.wait_until_done()
     if home_gripper:
         home_gripper_axis(robot, home)

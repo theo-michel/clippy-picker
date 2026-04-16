@@ -18,6 +18,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# Put values here to match the ChArUco board used in the calibration
 SQUARES_X = 17
 SQUARES_Y = 9
 CHECKER_SIZE_MM = 16.0
@@ -84,11 +85,21 @@ def calibrate_single(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stereo calibration from ChArUco frames")
-    parser.add_argument("--frames", type=str, default="calibration_frames",
-                        help="Directory with left_NNN.png / right_NNN.png")
-    parser.add_argument("--out", type=str, default="calibration_data",
-                        help="Output directory for calibration result")
+    parser = argparse.ArgumentParser(
+        description="Stereo calibration from ChArUco frames"
+    )
+    parser.add_argument(
+        "--frames",
+        type=str,
+        default="calibration_frames",
+        help="Directory with left_NNN.png / right_NNN.png",
+    )
+    parser.add_argument(
+        "--out",
+        type=str,
+        default="calibration_data",
+        help="Output directory for calibration result",
+    )
     args = parser.parse_args()
 
     frames_dir = Path(args.frames)
@@ -98,7 +109,9 @@ def main() -> None:
     right_paths = sorted(frames_dir.glob("right_*.png"))
 
     if len(left_paths) != len(right_paths) or len(left_paths) == 0:
-        print(f"Found {len(left_paths)} left, {len(right_paths)} right frames in {frames_dir}/")
+        print(
+            f"Found {len(left_paths)} left, {len(right_paths)} right frames in {frames_dir}/"
+        )
         print("Capture pairs with test_stereo.py first (press 'c').")
         sys.exit(1)
 
@@ -149,8 +162,13 @@ def main() -> None:
 
     h, w = left_imgs[0].shape[:2]
     ret, K_l, d_l, K_r, d_r, R, T, E, F = cv2.stereoCalibrate(
-        paired_obj, paired_img_l, paired_img_r,
-        K_left, dist_left, K_right, dist_right,
+        paired_obj,
+        paired_img_l,
+        paired_img_r,
+        K_left,
+        dist_left,
+        K_right,
+        dist_right,
         (w, h),
         flags=cv2.CALIB_FIX_INTRINSIC,
     )
@@ -172,13 +190,25 @@ def main() -> None:
     out_file = out_dir / "stereo_calibration.npz"
     np.savez(
         str(out_file),
-        K_left=K_l, dist_left=d_l,
-        K_right=K_r, dist_right=d_r,
-        R=R, T=T, E=E, F=F,
-        R1=R1, R2=R2, P1=P1, P2=P2, Q=Q,
-        roi_left=roi1, roi_right=roi2,
-        map_left_1=map_l1, map_left_2=map_l2,
-        map_right_1=map_r1, map_right_2=map_r2,
+        K_left=K_l,
+        dist_left=d_l,
+        K_right=K_r,
+        dist_right=d_r,
+        R=R,
+        T=T,
+        E=E,
+        F=F,
+        R1=R1,
+        R2=R2,
+        P1=P1,
+        P2=P2,
+        Q=Q,
+        roi_left=roi1,
+        roi_right=roi2,
+        map_left_1=map_l1,
+        map_left_2=map_l2,
+        map_right_1=map_r1,
+        map_right_2=map_r2,
         image_size=np.array([w, h]),
     )
     print(f"\nSaved to {out_file}")

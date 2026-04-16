@@ -1,10 +1,11 @@
-"""RealSense camera wrapper with MJPEG streaming for the Flask web controller."""
+"""MMlove stereo camera wrapper with MJPEG streaming for the Flask web controller."""
 
 from __future__ import annotations
 
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Generator
 
 import cv2
@@ -12,38 +13,56 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-try:
-    import pyrealsense2 as rs
-
-    _HAS_REALSENSE = True
-except ImportError:
-    rs = None  # type: ignore[assignment]
-    _HAS_REALSENSE = False
-    log.info("pyrealsense2 not available — camera features disabled")
+DEFAULT_CALIBRATION = (
+    Path(__file__).parent
+    / "calibration"
+    / "intrinsic"
+    / "stereo_calibration.npz"
+)
 
 
-def realsense_available() -> bool:
-    return _HAS_REALSENSE
+def camera_available() -> bool:
+    return True
 
 
-class RealsenseCamera:
-    """Thread-safe RealSense camera that produces MJPEG frames."""
+class StereoCamera:
+    """Thread-safe stereo camera that produces MJPEG frames and depth via disparity."""
 
-    def __init__(self, width: int = 640, height: int = 480, fps: int = 30):
-        if not _HAS_REALSENSE:
-            raise RuntimeError("pyrealsense2 is not installed")
-        self.width = width
-        self.height = height
+    def __init__(
+        self,
+        device_index: int = 0,
+        capture_width: int = 2560,
+        capture_height: int = 720,
+        fps: int = 30,
+        calibration_path: Path | str = DEFAULT_CALIBRATION,
+        stereo_scale: float = 0.5,
+        num_disparities: int = 192,
+    ):
+        self.device_index = device_index
+        self.capture_width = capture_width
+        self.capture_height = capture_height
         self.fps = fps
-        self._pipeline: rs.pipeline | None = None  # type: ignore[name-defined]
-        self._align = None
+        self.calibration_path = Path(calibration_path)
+        self._stereo_scale = stereo_scale
+        self._num_disparities = num_disparities
+
+        self._cap: cv2.VideoCapture | None = None
         self._running = False
         self._lock = threading.Lock()
         self._jpeg: bytes | None = None
         self._color_frame: np.ndarray | None = None
-        self._depth_data: np.ndarray | None = None
-        self._depth_scale: float = 0.0
-        self._intrinsics = None
+        self._disparity: np.ndarray | None = None
+
+        self._map_l1: np.ndarray | None = None
+        self._map_l2: np.ndarray | None = None
+        self._map_r1: np.ndarray | None = None
+        self._map_r2: np.ndarray | None = None
+        self._Q: np.ndarray | None = None
+        self._focal: float = 0.0
+        self._baseline: float = 0.0
+
+        self._stereo_matcher: cv2.StereoSGBM | None = None
+
         self._overlay_aruco = False
         self._overlay_detections = False
         self._aruco_detector: cv2.aruco.ArucoDetector | None = None
@@ -54,35 +73,64 @@ class RealsenseCamera:
     def running(self) -> bool:
         return self._running
 
+    def _load_calibration(self) -> None:
+        if not self.calibration_path.exists():
+            raise FileNotFoundError(
+                f"Stereo calibration not found at {self.calibration_path}"
+            )
+        data = np.load(str(self.calibration_path))
+        self._map_l1 = data["map_left_1"]
+        self._map_l2 = data["map_left_2"]
+        self._map_r1 = data["map_right_1"]
+        self._map_r2 = data["map_right_2"]
+        self._Q = data["Q"]
+        log.info("Loaded stereo calibration from %s", self.calibration_path)
+
     def start(self) -> None:
         if self._running:
             return
-        pipeline = rs.pipeline()  # type: ignore[union-attr]
-        cfg = rs.config()  # type: ignore[union-attr]
-        cfg.enable_stream(rs.stream.depth, self.width, self.height, rs.format.z16, self.fps)  # type: ignore[union-attr]
-        cfg.enable_stream(rs.stream.color, self.width, self.height, rs.format.bgr8, self.fps)  # type: ignore[union-attr]
-        profile = pipeline.start(cfg)
-        self._depth_scale = (
-            profile.get_device().first_depth_sensor().get_depth_scale()
+        self._load_calibration()
+        cap = cv2.VideoCapture(self.device_index)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.capture_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.capture_height)
+        if not cap.isOpened():
+            raise RuntimeError(f"Cannot open camera at index {self.device_index}")
+
+        self._focal = abs(self._Q[2, 3]) * self._stereo_scale
+        self._baseline = abs(1.0 / self._Q[3, 2])
+
+        block = 5
+        self._stereo_matcher = cv2.StereoSGBM_create(
+            minDisparity=0,
+            numDisparities=self._num_disparities,
+            blockSize=block,
+            P1=8 * 3 * block * block,
+            P2=32 * 3 * block * block,
+            disp12MaxDiff=1,
+            uniquenessRatio=5,
+            speckleWindowSize=200,
+            speckleRange=2,
+            mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY,
         )
-        self._align = rs.align(rs.stream.color)  # type: ignore[union-attr]
-        self._pipeline = pipeline
+
+        self._cap = cap
         self._running = True
         threading.Thread(target=self._loop, daemon=True).start()
-        log.info("Camera started (%dx%d@%d)", self.width, self.height, self.fps)
+        log.info(
+            "Stereo camera started (device %d, %dx%d)",
+            self.device_index,
+            self.capture_width,
+            self.capture_height,
+        )
 
     def stop(self) -> None:
         self._running = False
-        if self._pipeline:
-            try:
-                self._pipeline.stop()
-            except Exception:
-                pass
-            self._pipeline = None
+        if self._cap:
+            self._cap.release()
+            self._cap = None
         log.info("Camera stopped")
 
     def set_overlay(self, *, aruco: bool = False, detections: bool = False) -> None:
-        """Toggle overlays on the MJPEG stream."""
         self._overlay_aruco = aruco
         self._overlay_detections = detections
         if aruco and self._aruco_detector is None:
@@ -91,10 +139,10 @@ class RealsenseCamera:
             self._aruco_detector = cv2.aruco.ArucoDetector(aruco_dict, params)
         if detections and self._detector is None:
             from object_detection import ObjectDetector
+
             self._detector = ObjectDetector()
 
     def _draw_aruco_overlay(self, img: np.ndarray) -> np.ndarray:
-        """Draw detected ArUco markers onto the frame (in-place)."""
         if self._aruco_detector is None:
             return img
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -105,13 +153,19 @@ class RealsenseCamera:
             pts = corners[0].astype(np.int32)
             cv2.polylines(img, [pts], True, (0, 255, 0), 2)
             cx, cy = int(pts[:, 0].mean()), int(pts[:, 1].mean())
-            cv2.putText(img, f"ID {marker_id}", (cx - 20, cy - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(
+                img,
+                f"ID {marker_id}",
+                (cx - 20, cy - 12),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
             cv2.drawMarker(img, (cx, cy), (0, 255, 0), cv2.MARKER_CROSS, 10, 1)
         return img
 
     def _draw_detection_overlay(self, img: np.ndarray) -> np.ndarray:
-        """Run YOLO and draw bounding boxes + labels onto the frame (in-place)."""
         if self._detector is None:
             return img
         dets = self._detector.detect(img)
@@ -122,34 +176,58 @@ class RealsenseCamera:
             cx, cy = int(det.center_uv[0]), int(det.center_uv[1])
             cv2.drawMarker(img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 12, 2)
             text = f"{det.label} {det.confidence:.0%}"
-            cv2.putText(img, text, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1)
+            cv2.putText(
+                img, text, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1
+            )
         return img
 
     def _loop(self) -> None:
-        while self._running and self._pipeline:
+        map_l1, map_l2 = self._map_l1, self._map_l2
+        map_r1, map_r2 = self._map_r1, self._map_r2
+        matcher = self._stereo_matcher
+        assert map_l1 is not None and map_l2 is not None
+        assert map_r1 is not None and map_r2 is not None
+        assert matcher is not None
+
+        while self._running and self._cap:
             try:
-                ok, frames = self._pipeline.try_wait_for_frames(1000)
-                if not ok:
+                ret, frame = self._cap.read()
+                if not ret:
+                    time.sleep(0.01)
                     continue
-                aligned = self._align.process(frames)
-                depth = aligned.get_depth_frame()
-                color = aligned.get_color_frame()
-                if not depth or not color:
-                    continue
-                self._intrinsics = (
-                    depth.profile.as_video_stream_profile().intrinsics
+
+                h, w = frame.shape[:2]
+                mid = w // 2
+                left_raw = frame[:, :mid]
+                right_raw = frame[:, mid:]
+
+                left_rect = cv2.remap(left_raw, map_l1, map_l2, cv2.INTER_LINEAR)
+                right_rect = cv2.remap(right_raw, map_r1, map_r2, cv2.INTER_LINEAR)
+
+                s = self._stereo_scale
+                if s != 1.0:
+                    left_sm = cv2.resize(left_rect, None, fx=s, fy=s)
+                    right_sm = cv2.resize(right_rect, None, fx=s, fy=s)
+                else:
+                    left_sm, right_sm = left_rect, right_rect
+
+                left_gray = cv2.cvtColor(left_sm, cv2.COLOR_BGR2GRAY)
+                right_gray = cv2.cvtColor(right_sm, cv2.COLOR_BGR2GRAY)
+                disparity = (
+                    matcher.compute(left_gray, right_gray).astype(np.float32) / 16.0
                 )
-                img = np.asanyarray(color.get_data())
-                display = img.copy()
+
+                display = left_rect.copy()
                 if self._overlay_aruco:
                     self._draw_aruco_overlay(display)
                 if self._overlay_detections:
                     self._draw_detection_overlay(display)
+
                 _, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 with self._lock:
                     self._jpeg = buf.tobytes()
-                    self._color_frame = img.copy()
-                    self._depth_data = np.asanyarray(depth.get_data())
+                    self._color_frame = left_rect
+                    self._disparity = disparity
             except Exception as exc:
                 log.debug("Capture error: %s", exc)
                 time.sleep(0.1)
@@ -159,29 +237,20 @@ class RealsenseCamera:
             return self._jpeg
 
     def generate_mjpeg(self) -> Generator[bytes, None, None]:
-        """Yield multipart MJPEG frames for a streaming HTTP response."""
         dt = 1.0 / self.fps
         while self._running:
             frame = self.get_jpeg()
             if frame:
                 yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                    b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
             time.sleep(dt)
 
     def get_color_frame(self) -> np.ndarray | None:
-        """Return the latest color frame as a BGR numpy array, or None."""
         with self._lock:
             return self._color_frame.copy() if self._color_frame is not None else None
 
-    def detect_aruco(
-        self, dictionary_name: str = "DICT_4X4_50"
-    ) -> list[dict]:
-        """Detect ArUco markers in the current frame.
-
-        Returns a list of dicts: [{"id": int, "center": (u, v), "corners": [(u,v),...]}]
-        """
+    def detect_aruco(self, dictionary_name: str = "DICT_4X4_50") -> list[dict]:
         frame = self.get_color_frame()
         if frame is None:
             return []
@@ -195,39 +264,55 @@ class RealsenseCamera:
             return []
         results = []
         for corners, marker_id in zip(corners_list, ids.ravel()):
-            pts = corners[0]  # (4, 2)
+            pts = corners[0]
             cx = float(pts[:, 0].mean())
             cy = float(pts[:, 1].mean())
-            results.append({
-                "id": int(marker_id),
-                "center": (cx, cy),
-                "corners": [(float(p[0]), float(p[1])) for p in pts],
-            })
+            results.append(
+                {
+                    "id": int(marker_id),
+                    "center": (cx, cy),
+                    "corners": [(float(p[0]), float(p[1])) for p in pts],
+                }
+            )
         return results
 
-    def deproject(self, u: int, v: int, *, patch: int = 0) -> tuple[float, float, float] | None:
-        """Pixel (u, v) -> 3D point in camera frame (mm). None if no depth.
+    def deproject(
+        self, u: int, v: int, *, patch: int = 0
+    ) -> tuple[float, float, float] | None:
+        """Pixel (u, v) in the rectified left image -> 3D point in camera frame (mm).
 
-        Args:
-            patch: half-size of the depth sampling window.  0 = single pixel,
-                   e.g. 5 = 11×11 patch with median filtering.
+        Stereo matching runs at ``_stereo_scale`` resolution (default 0.5).
+        Depth is computed as ``focal * baseline / disp`` matching depth_preview.py.
+        The Q matrix is used only for X/Y reprojection.
         """
         with self._lock:
-            if self._depth_data is None or self._intrinsics is None:
+            if self._disparity is None or self._Q is None:
                 return None
-            h, w = self._depth_data.shape
-            if not (0 <= v < h and 0 <= u < w):
+            s = self._stereo_scale
+            us, vs = int(round(u * s)), int(round(v * s))
+            h, w = self._disparity.shape
+            if not (0 <= vs < h and 0 <= us < w):
                 return None
             if patch > 0:
-                v0, v1 = max(0, v - patch), min(h, v + patch + 1)
-                u0, u1 = max(0, u - patch), min(w, u + patch + 1)
-                region = self._depth_data[v0:v1, u0:u1].astype(np.float64) * self._depth_scale
+                ps = max(1, int(round(patch * s)))
+                v0, v1 = max(0, vs - ps), min(h, vs + ps + 1)
+                u0, u1 = max(0, us - ps), min(w, us + ps + 1)
+                region = self._disparity[v0:v1, u0:u1]
                 valid = region[region > 0]
-                depth_m = float(np.median(valid)) if len(valid) > 0 else 0.0
+                disp = float(np.median(valid)) if len(valid) > 0 else 0.0
             else:
-                depth_m = self._depth_data[v, u] * self._depth_scale
-            intrinsics = self._intrinsics
-        if depth_m <= 0:
+                disp = float(self._disparity[vs, us])
+            focal = self._focal
+            baseline = self._baseline
+            Q = self._Q
+
+        if disp <= 0:
             return None
-        pt = rs.rs2_deproject_pixel_to_point(intrinsics, [u, v], depth_m)  # type: ignore[union-attr]
-        return (pt[0] * 1000, pt[1] * 1000, pt[2] * 1000)
+
+        Z_mm = focal * baseline / disp * 1000.0
+        cx = Q[0, 3]
+        cy = Q[1, 3]
+        focal_full = abs(Q[2, 3])
+        X_mm = (u - cx) / focal_full * (Z_mm / 1000.0) * 1000.0
+        Y_mm = (v - cy) / focal_full * (Z_mm / 1000.0) * 1000.0
+        return (X_mm, Y_mm, Z_mm)

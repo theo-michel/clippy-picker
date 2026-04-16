@@ -20,7 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-CALIBRATION_FILE = Path("calibration_data/stereo_calibration.npz")
+CALIBRATION_FILE = Path(__file__).resolve().parent.parent / "calibration" / "intrinsic" / "stereo_calibration.npz"
 
 
 def main() -> None:
