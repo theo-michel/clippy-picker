@@ -1260,6 +1260,8 @@ def api_test_pick_cancel():
 
 
 def main():
+    import signal, os
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
     log.info("Starting web server at http://0.0.0.0:8080")
     app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)
 

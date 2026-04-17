@@ -94,7 +94,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    idx = args.index
+    idx = find_stereo_camera(args.index)
+    if idx < 0:
+        print("No stereo camera found. Check the USB connection.")
+        sys.exit(1)
 
     cap = cv2.VideoCapture(idx)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
