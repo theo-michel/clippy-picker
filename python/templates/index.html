@@ -3,399 +3,494 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Picker – Dashboard</title>
+  <title>PICKER — TELEMETRY</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
+    /* ──────────────────────────────────────────────────────────────
+       PICKER · technical-drawing aesthetic
+       Ink on warm off-white, hairlines, square corners, monospace.
+       ────────────────────────────────────────────────────────────── */
     :root {
-      --bg:           #f5f5f7;
-      --bg-card:      #ffffff;
-      --bg-input:     #f3f4f6;
-      --bg-hover:     #e5e7eb;
-      --border:       #d1d5db;
-      --border-subtle:#e5e7eb;
-      --text:         #111827;
-      --text-dim:     #6b7280;
-      --accent:       #2563eb;
-      --green:        #16a34a;
-  --green-dim:    rgba(22,163,74,0.12);
-      --red:          #dc2626;
-  --orange:       #f97316;
-      --radius:       10px;
-      --shadow:       0 8px 24px rgba(15,23,42,0.08);
-      --font:         system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mono:         "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --axis-x:       #dc2626;
-  --axis-y:       #16a34a;
-  --axis-z:       #2563eb;
+      --bg:            #F4F3EE;
+      --bg-card:       #F8F7F2;
+      --bg-input:      #EDEBE4;
+      --bg-hover:      #E6E3DA;
+      --border:        #CFCDC4;
+      --border-subtle: #D8D6CF;
+      --rule:          #D8D6CF;
+      --text:          #0D0D0B;
+      --text-dim:      #74736F;
+      --accent:        #0D0D0B;   /* ink is the only accent */
+      --green:         #3E6B3A;   /* ok / connected — desaturated forest */
+      --green-dim:     rgba(62,107,58,0.10);
+      --red:           #8B2E2E;   /* error — desaturated brick */
+      --red-dim:       rgba(139,46,46,0.08);
+      --orange:        #7A5A1F;   /* warn — ochre */
+      --radius:        0px;
+      --shadow:        none;
+      --font:          "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --mono:          "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --axis-x:        #8B2E2E;
+      --axis-y:        #3E6B3A;
+      --axis-z:        #2E4A6B;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { font-size: 15px; }
+    html { font-size: 14px; }
     body {
       font-family: var(--font);
-      background: radial-gradient(circle at top left, #e5edff, #f9fafb 52%, #f5f5f7 100%);
-  color: var(--text); min-height: 100vh; line-height: 1.5; overflow-x: hidden;
+      font-feature-settings: "ss01", "ss02", "cv11";
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+      overflow-x: hidden;
+      letter-spacing: 0.01em;
+      -webkit-font-smoothing: antialiased;
+      position: relative;
     }
+    /* Faint graph-paper backdrop, fades at edges */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        linear-gradient(to right, rgba(13,13,11,.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(13,13,11,.05) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at center, #000 35%, transparent 85%);
+    }
+    body > * { position: relative; z-index: 1; }
 
-/* ── Topbar ────────────────────────────────────────────────────── */
+/* ── Topbar HUD ────────────────────────────────────────────────── */
     .topbar {
-  position: sticky; top: 0; z-index: 40;
-  backdrop-filter: blur(18px); background: rgba(249,250,251,0.9);
-  border-bottom: 1px solid rgba(209,213,219,0.7);
+      position: sticky; top: 0; z-index: 40;
+      background: var(--bg);
+      border-bottom: 1px solid var(--rule);
       padding: 10px 20px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.topbar-left  { display: flex; align-items: center; gap: 10px; }
-.topbar-right { display: flex; align-items: center; gap: 10px; }
-.logo { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #111827; }
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 16px;
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .topbar-left  { display: flex; align-items: center; gap: 10px; }
+    .topbar-mid   { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text-dim); }
+    .topbar-mid .mods { color: var(--text); letter-spacing: 0.08em; }
+    .topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+    .logo        { font-size: .78rem; font-weight: 600; letter-spacing: 0.14em; color: var(--text); }
+    .logo-version{ font-size: .64rem; color: var(--text-dim); margin-left: 4px; }
     .status-dot {
-  width: 9px; height: 9px; border-radius: 999px;
-  background: #9ca3af; box-shadow: 0 0 0 1px rgba(156,163,175,0.5);
-}
-.status-dot.connected { background: var(--green); box-shadow: 0 0 0 1px rgba(34,197,94,0.4), 0 0 12px rgba(34,197,94,0.5); }
-.status-dot.moving { animation: pulse 1s infinite; }
-.status-label { font-size: .8rem; color: var(--text-dim); }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+      width: 7px; height: 7px; border-radius: 0;
+      background: var(--text-dim);
+    }
+    .status-dot.connected { background: var(--text); animation: blink 1.6s steps(1) infinite; }
+    .status-dot.moving    { background: var(--text); animation: blink 0.6s steps(1) infinite; }
+    .status-label { font-size: .7rem; color: var(--text-dim); letter-spacing: 0.1em; }
+    @keyframes blink { 0%,60%{opacity:1} 61%,100%{opacity:.15} }
+    @keyframes dash  { to { stroke-dashoffset: -20; } }
 
 /* ── Buttons ───────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 7px 14px; border-radius: 999px;
-  border: 1px solid var(--border); background: #fff;
-  color: var(--text); font-size: .8rem; font-weight: 500;
-  font-family: var(--font); cursor: pointer;
-  transition: all .15s; white-space: nowrap;
-}
-.btn:hover { background: var(--bg-hover); border-color: #9ca3af; }
-.btn:active { transform: translateY(1px); box-shadow: none; }
-.btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; box-shadow: 0 6px 16px rgba(37,99,235,0.25); }
-.btn-ghost { background: var(--bg-input); }
-.btn-sm { padding: 5px 12px; font-size: .78rem; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 6px 12px; border-radius: 0;
+      border: 1px solid var(--rule); background: transparent;
+      color: var(--text); font-size: .7rem; font-weight: 500;
+      font-family: var(--mono);
+      text-transform: uppercase; letter-spacing: 0.1em;
+      cursor: pointer; white-space: nowrap;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .btn:hover    { background: var(--bg-hover); border-color: var(--text); }
+    .btn:active   { transform: translateY(1px); }
+    .btn:disabled { opacity: .35; cursor: default; }
+    .btn-primary {
+      background: var(--text); border-color: var(--text); color: var(--bg);
+    }
+    .btn-primary:hover { background: var(--text); color: var(--bg); opacity: .88; }
+    .btn-ghost   { background: var(--bg-input); }
+    .btn-sm      { padding: 4px 10px; font-size: .65rem; }
 
 /* ── Layout ────────────────────────────────────────────────────── */
-.main { padding: 16px 20px; transition: margin-left .25s ease; }
-.workspace-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .main          { padding: 20px 24px 8px; transition: margin-left .25s ease; }
+    .workspace-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 
 /* ── Pane ──────────────────────────────────────────────────────── */
-.pane {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
-  display: flex; flex-direction: column;
-}
-.pane-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-bottom: 1px solid var(--border-subtle);
-  gap: 12px; min-height: 42px; flex-shrink: 0;
-}
-.pane-title {
-  font-size: .78rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1px; color: var(--text-dim); flex-shrink: 0;
-}
-.pane-coords { font-family: var(--mono); font-size: .75rem; color: var(--text-dim); white-space: nowrap; }
+    .pane {
+      background: var(--bg-card); border: 1px solid var(--rule);
+      border-radius: 0; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .pane-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px; border-bottom: 1px solid var(--rule);
+      gap: 12px; min-height: 38px; flex-shrink: 0;
+      background: var(--bg-card);
+    }
+    .pane-title {
+      font-size: .68rem; font-weight: 500; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--text); flex-shrink: 0;
+    }
+    .pane-coords { font-family: var(--mono); font-size: .68rem; color: var(--text-dim); white-space: nowrap; letter-spacing: 0.08em; }
 
 /* ── Camera ────────────────────────────────────────────────────── */
-.camera-body {
-  position: relative; background: #f9fafb;
-  height: 0; padding-bottom: 56.25%; overflow: hidden;
-}
-.camera-body img {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block;
-}
-.camera-placeholder {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 12px; color: var(--text-dim); font-size: .9rem;
-}
-.camera-placeholder svg { width: 48px; height: 48px; opacity: .3; }
+    .camera-body {
+      position: relative; background: var(--bg-input);
+      height: 0; padding-bottom: 56.25%; overflow: hidden;
+    }
+    .camera-body img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block;
+    }
+    .camera-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 10px; color: var(--text-dim);
+      font-size: .7rem; text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .camera-placeholder svg { width: 36px; height: 36px; opacity: .35; }
 
 /* ── XY Workspace + Z lever ────────────────────────────────────── */
-.xy-z-body { position: relative; height: 0; padding-bottom: 56.25%; }
-.xy-z-body canvas {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  cursor: crosshair; touch-action: none;
-}
-.z-lever-col {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 56px;
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: space-between; padding: 12px 6px;
-  border-left: 1px solid var(--border-subtle); gap: 4px; background: var(--bg-input);
-}
-.z-lever-label { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--axis-z); }
-.z-lever-val   { font-family: var(--mono); font-size: .75rem; color: var(--axis-z); text-align: center; }
-.z-lever-tick  { font-family: var(--mono); font-size: .65rem; color: var(--text-dim); }
-.z-lever {
-  writing-mode: vertical-lr; direction: ltr;
-  -webkit-appearance: none; appearance: none;
-  flex: 1; width: 28px; margin: 4px 0; background: transparent; cursor: ns-resize;
-}
-.z-lever::-webkit-slider-runnable-track { width: 5px; border-radius: 3px; background: var(--border); }
-.z-lever::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
-  background: var(--axis-z); box-shadow: 0 0 0 2px #fff, 0 4px 10px rgba(37,99,235,.4); margin-left: -5px;
-}
-.z-lever::-moz-range-track { width: 5px; border-radius: 3px; background: var(--border); }
-.z-lever::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%; background: var(--axis-z);
-  border: 2px solid #fff; box-shadow: 0 4px 10px rgba(37,99,235,.4); cursor: ns-resize;
-}
+    .xy-z-body { position: relative; height: 0; padding-bottom: 56.25%; background: var(--bg-card); }
+    .xy-z-body canvas {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      cursor: crosshair; touch-action: none;
+    }
+    .z-lever-col {
+      position: absolute; top: 0; right: 0; bottom: 0; width: 52px;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: space-between; padding: 10px 4px;
+      border-left: 1px solid var(--rule); gap: 4px; background: var(--bg-card);
+    }
+    .z-lever-label { font-size: .62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--axis-z); }
+    .z-lever-val   { font-family: var(--mono); font-size: .68rem; color: var(--text); text-align: center; }
+    .z-lever-tick  { font-family: var(--mono); font-size: .58rem; color: var(--text-dim); letter-spacing: 0.1em; }
+    .z-lever {
+      writing-mode: vertical-lr; direction: ltr;
+      -webkit-appearance: none; appearance: none;
+      flex: 1; width: 24px; margin: 4px 0; background: transparent; cursor: ns-resize;
+    }
+    .z-lever::-webkit-slider-runnable-track { width: 1px; border-radius: 0; background: var(--rule); }
+    .z-lever::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 3px; border-radius: 0;
+      background: var(--text); margin-left: -5px;
+    }
+    .z-lever::-moz-range-track { width: 1px; border-radius: 0; background: var(--rule); }
+    .z-lever::-moz-range-thumb {
+      width: 12px; height: 3px; border-radius: 0; background: var(--text);
+      border: none; cursor: ns-resize;
+    }
 
 /* ── Gantry (inside workspace pane) ────────────────────────────── */
-.pane-gantry {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; border-top: 1px solid var(--border-subtle);
-}
-.pane-gantry-label {
-  font-size: .78rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1px; color: var(--text-dim); flex-shrink: 0;
-}
-.pane-gantry input[type="range"] {
-  flex: 1; -webkit-appearance: none; appearance: none;
-  height: 5px; border-radius: 999px; background: var(--border-subtle); outline: none;
-}
-.pane-gantry input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(37,99,235,.4); cursor: pointer;
-}
-.pane-gantry input[type="range"]::-moz-range-thumb {
-  width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
-  border: 2px solid #fff; box-shadow: 0 3px 8px rgba(37,99,235,.4); cursor: pointer;
-}
-.gantry-input {
-  width: 64px; padding: 4px 6px; border-radius: 999px;
-  border: 1px solid var(--border); background: #fff;
-  font-family: var(--mono); font-size: .78rem; text-align: center; outline: none;
-}
-.gantry-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(37,99,235,.18); }
-.gantry-unit { font-size: .72rem; color: var(--text-dim); }
+    .pane-gantry {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px; border-top: 1px solid var(--rule);
+      background: var(--bg-card);
+    }
+    .pane-gantry-label {
+      font-size: .66rem; font-weight: 500; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--text-dim); flex-shrink: 0;
+    }
+    .pane-gantry input[type="range"],
+    .grip-slider-row input[type="range"] {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 1px; border-radius: 0; background: var(--rule); outline: none;
+    }
+    .pane-gantry input[type="range"]::-webkit-slider-thumb,
+    .grip-slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 3px; height: 14px; border-radius: 0;
+      background: var(--text); cursor: pointer;
+    }
+    .pane-gantry input[type="range"]::-moz-range-thumb,
+    .grip-slider-row input[type="range"]::-moz-range-thumb {
+      width: 3px; height: 14px; border-radius: 0; background: var(--text);
+      border: none; cursor: pointer;
+    }
+    .gantry-input, .grip-input {
+      width: 64px; padding: 3px 6px; border-radius: 0;
+      border: 1px solid var(--rule); background: var(--bg);
+      font-family: var(--mono); font-size: .7rem; text-align: center; outline: none;
+      color: var(--text);
+    }
+    .gantry-input:focus, .grip-input:focus { border-color: var(--text); }
+    .gantry-unit { font-size: .62rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.12em; }
 
 /* ── Controls row ──────────────────────────────────────────────── */
-.controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
-.card {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow);
-}
-.card-title {
-  font-size: .74rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1px; color: var(--text-dim); margin-bottom: 12px;
-}
+    .controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--rule);
+      border-radius: 0; padding: 0;
+      display: flex; flex-direction: column;
+    }
+    .card-title {
+      font-size: .66rem; font-weight: 500; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--text);
+      padding: 8px 14px; border-bottom: 1px solid var(--rule);
+    }
+    .card > *:not(.card-title) { padding: 12px 14px; }
 
 /* ── Gripper ───────────────────────────────────────────────────── */
-.grip-slider-row {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-}
-.grip-slider-row input[type="range"] {
-  flex: 1; -webkit-appearance: none; appearance: none;
-  height: 5px; border-radius: 999px; background: var(--border-subtle); outline: none;
-}
-.grip-slider-row input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(37,99,235,.4); cursor: pointer;
-}
-.grip-slider-row input[type="range"]::-moz-range-thumb {
-  width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
-  border: 2px solid #fff; box-shadow: 0 3px 8px rgba(37,99,235,.4); cursor: pointer;
-}
-.grip-input {
-  width: 64px; padding: 4px 6px; border-radius: 999px;
-  border: 1px solid var(--border); background: #fff;
-  font-family: var(--mono); font-size: .78rem; text-align: center; outline: none;
-}
-.grip-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(37,99,235,.18); }
-.grip-actions { display: flex; gap: 8px; }
+    .grip-slider-row { display: flex; align-items: center; gap: 8px; }
+    .grip-actions    { display: flex; gap: 6px; padding-top: 0 !important; }
 
 /* ── Computed Angles ───────────────────────────────────────────── */
-.angles-group { display: flex; flex-direction: column; gap: 10px; }
-.angle-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; background: var(--bg-input);
-  border-radius: 8px; border: 1px solid var(--border-subtle);
-}
-.angle-label { font-weight: 600; font-size: .85rem; color: var(--accent); min-width: 28px; }
-.angle-bar-track {
-  flex: 1; height: 6px; background: var(--border);
-  border-radius: 3px; position: relative; overflow: hidden;
-}
-.angle-bar-fill {
-  position: absolute; height: 100%; border-radius: 3px;
-  background: var(--accent); transition: width .15s, left .15s;
-}
-.angle-value {
-  font-family: var(--mono); font-size: .85rem; min-width: 64px;
-  text-align: right; color: var(--text);
-}
+    .angles-group { display: flex; flex-direction: column; gap: 8px; }
+    .angle-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 8px; background: transparent;
+      border-radius: 0; border: 1px dashed var(--rule);
+    }
+    .angle-label { font-weight: 500; font-size: .74rem; color: var(--text); min-width: 24px; letter-spacing: 0.04em; }
+    .angle-bar-track {
+      flex: 1; height: 2px; background: var(--rule);
+      border-radius: 0; position: relative; overflow: visible;
+    }
+    .angle-bar-fill {
+      position: absolute; height: 100%; border-radius: 0;
+      background: var(--text); transition: width .15s, left .15s;
+    }
+    .angle-value {
+      font-family: var(--mono); font-size: .72rem; min-width: 60px;
+      text-align: right; color: var(--text); letter-spacing: 0.04em;
+    }
 
 /* ── Actions ───────────────────────────────────────────────────── */
-.actions-col { display: flex; flex-direction: column; gap: 10px; }
-.actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions-col { display: flex; flex-direction: column; gap: 8px; }
+    .actions-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ── Command Status ────────────────────────────────────────────── */
-.cmd-status {
-  padding: 8px 14px; border-radius: var(--radius);
-  font-family: var(--mono); font-size: .78rem;
-  border: 1px solid var(--border-subtle); background: var(--bg-card);
-  color: var(--text-dim); transition: opacity .3s;
-}
-.cmd-status.ok  { border-left: 3px solid var(--green); color: var(--text); }
-.cmd-status.err { border-left: 3px solid var(--red); color: var(--red); }
+    .cmd-status {
+      padding: 6px 14px; border-radius: 0;
+      font-family: var(--mono); font-size: .7rem;
+      border: 1px solid var(--rule); background: var(--bg-card);
+      color: var(--text-dim); transition: opacity .3s;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      border-left-width: 2px;
+    }
+    .cmd-status.ok  { border-left-color: var(--text);  color: var(--text); }
+    .cmd-status.err { border-left-color: var(--red);   color: var(--red);  }
 
 /* ── Calibration Sidebar ──────────────────────────────────────── */
-.calib-sidebar {
-  position: fixed; top: 0; left: 0; bottom: 0; width: 340px;
-  z-index: 50; background: var(--bg);
-  border-right: 1px solid var(--border);
-  box-shadow: 4px 0 24px rgba(0,0,0,0.08);
-  transform: translateX(-100%); transition: transform .25s ease;
-  display: flex; flex-direction: column; overflow: hidden;
-}
-.calib-sidebar.open { transform: translateX(0); }
-.main.sidebar-open { margin-left: 340px; }
-.calib-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-card); flex-shrink: 0;
-}
-.calib-title { font-size: .9rem; font-weight: 700; }
-.calib-body {
-  flex: 1; overflow-y: auto; padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 8px;
-}
-.calib-divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
-.calib-status-row { display: flex; gap: 14px; }
-.calib-status-item { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--text-dim); }
-.calib-status-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: #9ca3af;
-  box-shadow: 0 0 0 1px rgba(156,163,175,0.4);
-}
-.calib-status-dot.on { background: var(--green); box-shadow: 0 0 0 1px rgba(34,197,94,0.4), 0 0 8px rgba(34,197,94,0.4); }
-.calib-capture-btn { width: 100%; padding: 10px; font-size: .9rem; }
-.calib-point-count { font-size: .8rem; color: var(--text-dim); text-align: center; }
-.calib-point-count span:first-child { font-weight: 700; color: var(--text); }
-.calib-point-hint { font-size: .72rem; }
-.calib-guidance { font-size: .75rem; color: var(--text-dim); line-height: 1.5; }
-.calib-table-wrap { max-height: 200px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 8px; }
-.calib-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
-.calib-table th {
-  position: sticky; top: 0; background: var(--bg-input); padding: 5px 6px;
-  text-align: left; font-weight: 600; color: var(--text-dim);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.calib-table td { padding: 4px 6px; border-bottom: 1px solid var(--border-subtle); }
-.calib-table .mono { font-family: var(--mono); font-size: .68rem; }
-.calib-remove-btn {
-  background: none; border: none; color: var(--red); cursor: pointer;
-  font-size: .9rem; padding: 0 4px; opacity: .6;
-}
-.calib-remove-btn:hover { opacity: 1; }
-.calib-rmsd-row { display: flex; align-items: center; justify-content: space-between; }
-.calib-label { font-size: .74rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
-.calib-rmsd-badge {
-  padding: 3px 10px; border-radius: 999px; font-family: var(--mono);
-  font-size: .78rem; font-weight: 700;
-}
-.calib-rmsd-badge.good { background: var(--green-dim); color: var(--green); }
-.calib-rmsd-badge.warn { background: rgba(249,115,22,0.1); color: var(--orange); }
-.calib-rmsd-badge.bad  { background: rgba(220,38,38,0.08); color: var(--red); }
-.calib-matrix { font-family: var(--mono); font-size: .68rem; line-height: 1.6; }
-.calib-matrix-row { white-space: pre; }
-.calib-actions { display: flex; gap: 8px; }
-.calib-actions .btn { flex: 1; }
-.calib-btn-clear { color: var(--red); border-color: rgba(220,38,38,0.3); }
-.calib-btn-clear:hover { background: rgba(220,38,38,0.06); border-color: var(--red); }
+    .calib-sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 340px;
+      z-index: 50; background: var(--bg);
+      border-right: 1px solid var(--rule);
+      box-shadow: none;
+      transform: translateX(-100%); transition: transform .25s ease;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .calib-sidebar.open { transform: translateX(0); }
+    .main.sidebar-open  { margin-left: 340px; }
+    .calib-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--rule);
+      background: var(--bg); flex-shrink: 0;
+    }
+    .calib-title {
+      font-size: .74rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .calib-body {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .calib-divider { height: 1px; background: var(--rule); margin: 2px 0; }
+    .calib-status-row  { display: flex; gap: 14px; }
+    .calib-status-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .66rem; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .calib-status-dot {
+      width: 6px; height: 6px; border-radius: 0; background: var(--text-dim);
+    }
+    .calib-status-dot.on { background: var(--text); animation: blink 1.6s steps(1) infinite; }
+    .calib-capture-btn   { width: 100%; padding: 9px; font-size: .72rem; }
+    .calib-point-count {
+      font-size: .66rem; color: var(--text-dim); text-align: center;
+      text-transform: uppercase; letter-spacing: 0.12em;
+    }
+    .calib-point-count span:first-child { font-weight: 600; color: var(--text); }
+    .calib-point-hint    { font-size: .6rem; letter-spacing: 0.08em; }
+    .calib-guidance {
+      font-size: .66rem; color: var(--text-dim); line-height: 1.6;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .calib-table-wrap {
+      max-height: 200px; overflow-y: auto;
+      border: 1px solid var(--rule); border-radius: 0;
+    }
+    .calib-table { width: 100%; border-collapse: collapse; font-size: .66rem; }
+    .calib-table th {
+      position: sticky; top: 0; background: var(--bg-input);
+      padding: 5px 6px; text-align: left; font-weight: 500;
+      color: var(--text-dim); border-bottom: 1px solid var(--rule);
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .calib-table td { padding: 3px 6px; border-bottom: 1px dashed var(--rule); }
+    .calib-table .mono { font-family: var(--mono); font-size: .64rem; }
+    .calib-remove-btn {
+      background: none; border: none; color: var(--red); cursor: pointer;
+      font-size: .9rem; padding: 0 4px; opacity: .55;
+    }
+    .calib-remove-btn:hover { opacity: 1; }
+    .calib-rmsd-row { display: flex; align-items: center; justify-content: space-between; }
+    .calib-label {
+      font-size: .66rem; font-weight: 500; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .calib-rmsd-badge {
+      padding: 2px 8px; border-radius: 0; border: 1px solid var(--rule);
+      font-family: var(--mono); font-size: .68rem; font-weight: 600;
+      background: var(--bg);
+    }
+    .calib-rmsd-badge.good { border-color: var(--text);   color: var(--text);   background: var(--bg-card); }
+    .calib-rmsd-badge.warn { border-color: var(--orange); color: var(--orange); }
+    .calib-rmsd-badge.bad  { border-color: var(--red);    color: var(--red);    }
+    .calib-matrix     { font-family: var(--mono); font-size: .64rem; line-height: 1.7; color: var(--text); }
+    .calib-matrix-row { white-space: pre; }
+    .calib-actions    { display: flex; gap: 6px; }
+    .calib-actions .btn { flex: 1; }
+    .calib-btn-clear    { color: var(--red); border-color: var(--red); }
+    .calib-btn-clear:hover { background: var(--red-dim); border-color: var(--red); }
 
 /* ── Modal ─────────────────────────────────────────────────────── */
-.modal-overlay {
-  display: none; position: fixed; inset: 0; z-index: 100;
-  background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
-  justify-content: center; align-items: flex-start;
-  padding: 40px 16px; overflow-y: auto;
-}
-.modal-overlay.open { display: flex; }
-.modal {
-  width: 100%; max-width: 540px; background: var(--bg);
-  border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,0.18);
-  overflow: hidden; animation: modalIn .2s ease-out;
-}
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 22px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-card);
-}
-.modal-title { font-size: 1rem; font-weight: 700; }
-.modal-close {
-  width: 30px; height: 30px; border: none; background: var(--bg-input);
-  border-radius: 8px; cursor: pointer; font-size: 1.1rem; color: var(--text-dim);
-  display: flex; align-items: center; justify-content: center; transition: background .15s;
-}
-.modal-close:hover { background: var(--bg-hover); }
-.modal-body { padding: 20px 22px 28px; display: flex; flex-direction: column; gap: 14px; }
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(13,13,11,0.28); backdrop-filter: blur(2px);
+      justify-content: center; align-items: flex-start;
+      padding: 40px 16px; overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      width: 100%; max-width: 540px;
+      background: var(--bg); border: 1px solid var(--rule);
+      border-radius: 0; box-shadow: none;
+      overflow: hidden; animation: modalIn .18s ease-out;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; border-bottom: 1px solid var(--rule); background: var(--bg);
+    }
+    .modal-title {
+      font-size: .74rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .modal-close {
+      width: 24px; height: 24px; border: 1px solid var(--rule); background: transparent;
+      border-radius: 0; cursor: pointer; font-size: .9rem; color: var(--text-dim);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .modal-close:hover { background: var(--bg-hover); color: var(--text); border-color: var(--text); }
+    .modal-body { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 
 /* ── Wizard Steps ──────────────────────────────────────────────── */
-.step {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius); padding: 18px 20px;
-  transition: all .25s; opacity: .5; pointer-events: none;
-}
-.step.active { opacity: 1; pointer-events: auto; border-color: var(--accent); box-shadow: var(--shadow); }
-.step.done   { opacity: .8; pointer-events: none; border-color: var(--green); }
-.step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.step-number {
-  width: 24px; height: 24px; border-radius: 999px;
-  background: var(--bg-input); border: 2px solid var(--border-subtle);
-  display: flex; align-items: center; justify-content: center;
-  font-size: .75rem; font-weight: 600; color: var(--text-dim);
-  flex-shrink: 0; transition: all .25s;
-}
-.step.active .step-number { border-color: var(--accent); color: var(--accent); background: #eff6ff; }
-.step.done .step-number   { border-color: var(--green); color: var(--green); background: rgba(22,163,74,0.12); }
-.step-title { font-size: .95rem; font-weight: 600; }
-.step-desc  { font-size: .82rem; color: var(--text-dim); line-height: 1.6; margin-bottom: 12px; }
-.port-row   { display: flex; gap: 8px; align-items: center; }
-.port-row select {
-  flex: 1; background: var(--bg-input); color: var(--text);
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: 6px 12px; font-size: .8rem; font-family: var(--mono); outline: none;
-}
-.port-row select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(37,99,235,.2); }
-.btn-home {
-  width: 100%; padding: 12px 18px; font-size: .95rem;
-  background: var(--green-dim); border-color: var(--green); color: var(--green); font-weight: 700;
-}
-.btn-home:hover { background: rgba(34,197,94,0.18); }
-.status-msg {
-  font-size: .8rem; font-family: var(--mono); color: var(--text-dim);
-  margin-top: 8px; min-height: 1.3em;
-}
-.status-msg.ok   { color: var(--green); }
-.status-msg.err  { color: var(--red); }
-.status-msg.busy { color: var(--orange); }
-.wiz-pos-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-top: 8px; }
-.wiz-pos-cell {
-  background: var(--bg-input); border: 1px solid var(--border-subtle);
-  border-radius: 8px; padding: 6px; text-align: center;
-}
-.wiz-pos-cell .label { font-size: .68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
-.wiz-pos-cell .value { font-family: var(--mono); font-size: .88rem; font-weight: 600; margin-top: 2px; }
-.done-banner {
-  display: none; background: #ecfdf3; border: 1px solid rgba(22,163,74,0.5);
-  border-radius: var(--radius); padding: 18px 20px; text-align: center;
-}
-.done-banner.show { display: block; }
-.done-banner h3 { color: var(--green); font-size: 1rem; margin-bottom: 4px; }
-.done-banner p  { color: var(--text-dim); font-size: .82rem; }
-.done-banner .btn { margin-top: 10px; }
+    .step {
+      background: var(--bg-card); border: 1px solid var(--rule);
+      border-radius: 0; padding: 14px 16px;
+      transition: all .2s; opacity: .45; pointer-events: none;
+    }
+    .step.active { opacity: 1; pointer-events: auto; border-color: var(--text); }
+    .step.done   { opacity: .7; pointer-events: none; border-left: 2px solid var(--text); }
+    .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .step-number {
+      width: 22px; height: 22px; border-radius: 0;
+      background: transparent; border: 1px solid var(--rule);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .66rem; font-weight: 600; color: var(--text-dim);
+      flex-shrink: 0; transition: all .2s; font-family: var(--mono);
+    }
+    .step.active .step-number { border-color: var(--text);  color: var(--text);  background: var(--bg); }
+    .step.done   .step-number { border-color: var(--text);  color: var(--text);  background: var(--text); }
+    .step.done   .step-number { color: var(--bg); }
+    .step-title {
+      font-size: .76rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.12em;
+    }
+    .step-desc {
+      font-size: .7rem; color: var(--text-dim); line-height: 1.7;
+      margin-bottom: 10px; letter-spacing: 0.04em;
+    }
+    .step-desc strong { color: var(--text); font-weight: 600; }
+    .port-row   { display: flex; gap: 6px; align-items: center; }
+    .port-row select {
+      flex: 1; background: var(--bg); color: var(--text);
+      border: 1px solid var(--rule); border-radius: 0;
+      padding: 5px 10px; font-size: .7rem; font-family: var(--mono); outline: none;
+    }
+    .port-row select:focus { border-color: var(--text); }
+    .btn-home {
+      width: 100%; padding: 10px 14px; font-size: .74rem;
+      background: var(--text); border-color: var(--text); color: var(--bg);
+      font-weight: 500; letter-spacing: 0.14em;
+    }
+    .btn-home:hover { opacity: .88; }
+    .status-msg {
+      font-size: .66rem; font-family: var(--mono); color: var(--text-dim);
+      margin-top: 6px; min-height: 1.3em;
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .status-msg.ok   { color: var(--text);   }
+    .status-msg.err  { color: var(--red);    }
+    .status-msg.busy { color: var(--orange); }
+    .wiz-pos-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-top: 8px; }
+    .wiz-pos-cell {
+      background: transparent; border: 1px dashed var(--rule);
+      border-radius: 0; padding: 6px; text-align: center;
+    }
+    .wiz-pos-cell .label {
+      font-size: .56rem; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .wiz-pos-cell .value {
+      font-family: var(--mono); font-size: .78rem; font-weight: 500;
+      margin-top: 2px; color: var(--text);
+    }
+    .done-banner {
+      display: none; background: var(--bg-card); border: 1px solid var(--text);
+      border-left: 2px solid var(--text);
+      border-radius: 0; padding: 14px 16px; text-align: center;
+    }
+    .done-banner.show { display: block; }
+    .done-banner h3 {
+      color: var(--text); font-size: .78rem; margin-bottom: 4px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .done-banner p {
+      color: var(--text-dim); font-size: .66rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .done-banner .btn { margin-top: 10px; }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+/* ── Bottom HUD ────────────────────────────────────────────────── */
+    .bottombar {
+      border-top: 1px solid var(--rule);
+      padding: 6px 24px;
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      gap: 16px; align-items: center;
+      font-size: .6rem;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--text-dim);
+    }
+    .bottombar .right { text-align: right; color: var(--text); }
 
-@media (max-width: 960px) {
-  .workspace-row { grid-template-columns: 1fr; }
-  .controls { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 640px) {
-  .controls { grid-template-columns: 1fr; }
-  .wiz-pos-grid { grid-template-columns: repeat(2,1fr); }
+/* ── Utility ───────────────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 960px) {
+      .workspace-row { grid-template-columns: 1fr; }
+      .controls      { grid-template-columns: 1fr 1fr; }
+      .topbar        { grid-template-columns: 1fr auto; }
+      .topbar-mid    { display: none; }
+    }
+    @media (max-width: 640px) {
+      .controls       { grid-template-columns: 1fr; }
+      .wiz-pos-grid   { grid-template-columns: repeat(2,1fr); }
     }
   </style>
 </head>
@@ -403,17 +498,19 @@
 
   <header class="topbar">
     <div class="topbar-left">
-    <button class="btn btn-primary btn-sm" onclick="openHomingWizard()">Homing Wizard</button>
-    <button class="btn btn-sm" onclick="openCalibSidebar()">Calibrate</button>
-    <button class="btn btn-sm" onclick="openPickTest()">Pick Test</button>
-    <button class="btn btn-sm" onclick="openDebugTransform()">Debug Transform</button>
-      <span class="logo">PICKER</span>
-    <div style="width:6px;"></div>
+      <span class="logo">PICKER<span class="logo-version">[V.0.4.2_DELTA]</span></span>
       <div class="status-dot" id="statusDot"></div>
-      <span class="status-label" id="statusLabel">Disconnected</span>
+      <span class="status-label" id="statusLabel">DISCONNECTED</span>
+    </div>
+    <div class="topbar-mid">
+      <span>CORE_MODULES:</span>
+      <span class="mods">HOMING · CALIBRATION · PICK_TEST</span>
     </div>
     <div class="topbar-right">
-    <button class="btn btn-sm" id="btnDisconnect" onclick="disconnect()" style="display:none;">Disconnect</button>
+      <button class="btn btn-sm btn-primary" onclick="openHomingWizard()">▸ HOMING</button>
+      <button class="btn btn-sm" onclick="openCalibSidebar()">▸ CALIBRATE</button>
+      <button class="btn btn-sm" onclick="openPickTest()">▸ PICK_TEST</button>
+      <button class="btn btn-sm" id="btnDisconnect" onclick="disconnect()" style="display:none;">DISCONNECT</button>
     </div>
   </header>
 
@@ -423,10 +520,10 @@
     <!-- Camera pane -->
     <div class="pane">
       <div class="pane-header">
-        <span class="pane-title">Camera Feed</span>
+        <span class="pane-title">[CAMERA_FEED]</span>
         <div style="display:flex;gap:6px;">
-          <button class="btn btn-sm" id="btnDetect" onclick="toggleDetect()" style="display:none;">Detect</button>
-          <button class="btn btn-sm" id="btnCamera" onclick="toggleCamera()">Start</button>
+          <button class="btn btn-sm" id="btnDetect" onclick="toggleDetect()" style="display:none;">DETECT</button>
+          <button class="btn btn-sm" id="btnCamera" onclick="toggleCamera()">START</button>
         </div>
       </div>
       <div class="camera-body" id="cameraBody">
@@ -434,18 +531,18 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9A2.25 2.25 0 0013.5 5.25h-9A2.25 2.25 0 002.25 7.5v9A2.25 2.25 0 004.5 18.75z"/>
           </svg>
-          <span id="cameraMsg">Camera off</span>
-      </div>
+          <span id="cameraMsg">SENSOR_OFF</span>
+        </div>
         <img id="cameraFeed" style="display:none;" alt="Camera Feed">
       </div>
-        </div>
+    </div>
 
     <!-- Workspace pane -->
     <div class="pane">
       <div class="pane-header">
         <span class="pane-title">
-          Workspace&ensp;
-          <span style="color:var(--axis-x)">X</span>&thinsp;/&thinsp;<span style="color:var(--axis-y)">Y</span>
+          [WORKSPACE /
+          <span style="color:var(--axis-x)">X</span>&thinsp;·&thinsp;<span style="color:var(--axis-y)">Y</span>]
         </span>
         <span class="pane-coords" id="coordsXY"></span>
       </div>
@@ -463,41 +560,41 @@
           </div>
         </div>
       <div class="pane-gantry">
-        <span class="pane-gantry-label">Gantry</span>
-          <input type="range" id="sliderGx" min="0" max="625" step="1"
-                 oninput="onGantrySliderInput()" onchange="onGantrySliderInput()">
+        <span class="pane-gantry-label">GANTRY</span>
+        <input type="range" id="sliderGx" min="0" max="625" step="1" style="direction:rtl;"
+               oninput="onGantrySliderInput()" onchange="onGantrySliderInput()">
         <input class="gantry-input" id="inputGx" type="number" min="0" max="625" step="1"
-                   value="0" onchange="onGantryInputChange()">
+               value="0" onchange="onGantryInputChange()">
         <span class="gantry-unit">mm</span>
-          </div>
-        </div>
       </div>
+    </div>
+  </div>
 
   <div class="controls">
     <!-- Gripper -->
     <div class="card">
-        <div class="card-title">Gripper</div>
+      <div class="card-title">[GRIPPER]</div>
       <div class="grip-slider-row">
         <input type="range" id="sliderGrip" min="1428" max="2900" step="1" value="2900"
-                 oninput="onGripSliderInput()" onchange="onGripSliderInput()" style="direction:rtl;">
+               oninput="onGripSliderInput()" onchange="onGripSliderInput()">
         <input class="grip-input" id="inputGrip" type="number" min="1428" max="2900" step="1"
-                   value="2900" onchange="onGripInputChange()">
-          </div>
-      <div class="grip-actions">
-        <button class="btn btn-primary btn-sm" onclick="gripOpen()">Open</button>
-        <button class="btn btn-ghost btn-sm" onclick="gripClose()">Close</button>
-        </div>
+               value="2900" onchange="onGripInputChange()">
       </div>
+      <div class="grip-actions">
+        <button class="btn btn-primary btn-sm" onclick="gripOpen()">▸ OPEN</button>
+        <button class="btn btn-sm" onclick="gripClose()">▸ CLOSE</button>
+      </div>
+    </div>
 
     <!-- Computed Angles -->
     <div class="card">
-      <div class="card-title">Computed Angles</div>
+      <div class="card-title">[COMPUTED_ANGLES]</div>
       <div class="angles-group">
         <div class="angle-row">
           <span class="angle-label">&theta;1</span>
           <div class="angle-bar-track"><div class="angle-bar-fill" id="bar1"></div></div>
           <span class="angle-value" id="angle1">&mdash;</span>
-      </div>
+        </div>
         <div class="angle-row">
           <span class="angle-label">&theta;2</span>
           <div class="angle-bar-track"><div class="angle-bar-fill" id="bar2"></div></div>
@@ -513,19 +610,26 @@
 
     <!-- Actions -->
     <div class="card">
-        <div class="card-title">Actions</div>
+      <div class="card-title">[ACTIONS]</div>
       <div class="actions-col">
-      <div class="actions-row">
-          <button class="btn btn-primary" onclick="sendHome()">Home</button>
-          <button class="btn" onclick="centerXY()">Center</button>
-        <button class="btn" id="btnRect" onclick="runRectangle()">Rectangle Sweep</button>
-      </div>
+        <div class="actions-row">
+          <button class="btn btn-primary" onclick="sendHome()">▸ HOME</button>
+          <button class="btn" onclick="centerXY()">▸ CENTER</button>
+          <button class="btn" id="btnRect" onclick="runRectangle()">▸ RECTANGLE_SWEEP</button>
+        </div>
       </div>
     </div>
   </div>
 
     <div id="cmdStatus" class="cmd-status" style="display:none;"></div>
 </div>
+
+<footer class="bottombar">
+  <span>CALIBRATED · <span id="bottomDate"></span></span>
+  <span>SPATIAL_CALIBRATION_READY</span>
+  <span class="right">(DIAGRAM 01) PICKER_WORKSPACE</span>
+</footer>
+<script>document.getElementById('bottomDate').textContent = new Date().toISOString().slice(0, 10);</script>
 
   <script>
     const $ = id => document.getElementById(id);
@@ -642,32 +746,41 @@ function c2w(cx, cy) {
 }
 
 const GRID_STEP = 50;
+// Blueprint palette for canvas (matches CSS --axis-*, --text, --rule)
+const CANVAS_PAPER = '#F8F7F2';
+const CANVAS_INK   = '#0D0D0B';
+const AXIS_X       = '#8B2E2E';
+const AXIS_Y       = '#3E6B3A';
+const AXIS_Z       = '#2E4A6B';
+const RULE_FAINT   = 'rgba(13,13,11,.07)';
+const RULE_MED     = 'rgba(13,13,11,.18)';
+
 function render() {
   if (!ctx) return;
   const dw = canvasW - MARGIN - MARGIN_R, dh = canvasH - 2*MARGIN;
   ctx.clearRect(0, 0, canvasW, canvasH);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvasW, canvasH);
+  ctx.fillStyle = CANVAS_PAPER; ctx.fillRect(0, 0, canvasW, canvasH);
 
   ctx.lineWidth = 1;
   for (let v = -XY_RANGE; v <= XY_RANGE; v += GRID_STEP) {
     const p = w2c(v, 0);
-    ctx.strokeStyle = Math.abs(v) < .5 ? 'rgba(220,38,38,.35)' : 'rgba(0,0,0,.06)';
+    ctx.strokeStyle = Math.abs(v) < .5 ? 'rgba(139,46,46,.45)' : RULE_FAINT;
     ctx.beginPath(); ctx.moveTo(p.x, MARGIN); ctx.lineTo(p.x, MARGIN+dh); ctx.stroke();
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(116,115,111,1)'; ctx.font = '10px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
     ctx.fillText(v, p.x, canvasH - MARGIN/4 + 2);
   }
   for (let v = -XY_RANGE; v <= XY_RANGE; v += GRID_STEP) {
     const p = w2c(0, v);
-    ctx.strokeStyle = Math.abs(v) < .5 ? 'rgba(22,163,74,.35)' : 'rgba(0,0,0,.06)';
+    ctx.strokeStyle = Math.abs(v) < .5 ? 'rgba(62,107,58,.5)' : RULE_FAINT;
     ctx.beginPath(); ctx.moveTo(MARGIN, p.y); ctx.lineTo(canvasW-MARGIN_R, p.y); ctx.stroke();
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(116,115,111,1)'; ctx.font = '10px "JetBrains Mono", monospace'; ctx.textAlign = 'right';
     ctx.fillText(v, MARGIN-6, p.y+3);
   }
 
-  ctx.font = 'bold 12px system-ui,sans-serif'; ctx.textAlign = 'center';
-  ctx.fillStyle = '#dc2626'; ctx.fillText('X', MARGIN + dw/2, canvasH - 2);
+  ctx.font = '600 11px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = AXIS_X; ctx.fillText('X', MARGIN + dw/2, canvasH - 2);
   ctx.save(); ctx.translate(10, canvasH/2); ctx.rotate(-Math.PI/2);
-  ctx.fillStyle = '#16a34a'; ctx.fillText('Y', 0, 0); ctx.restore();
+  ctx.fillStyle = AXIS_Y; ctx.fillText('Y', 0, 0); ctx.restore();
 
   if (boundary.outer.length > 2) {
     ctx.beginPath();
@@ -681,40 +794,45 @@ function render() {
       for (let i = 1; i < rev.length; i++) { const p = w2c(rev[i][0], rev[i][1]); ctx.lineTo(p.x, p.y); }
       ctx.closePath();
     }
-    ctx.fillStyle = 'rgba(37,99,235,.04)'; ctx.fill('evenodd');
+    ctx.fillStyle = 'rgba(13,13,11,.035)'; ctx.fill('evenodd');
 
     ctx.beginPath();
     p0 = w2c(boundary.outer[0][0], boundary.outer[0][1]); ctx.moveTo(p0.x, p0.y);
     for (let i = 1; i < boundary.outer.length; i++) { const p = w2c(boundary.outer[i][0], boundary.outer[i][1]); ctx.lineTo(p.x, p.y); }
-    ctx.closePath(); ctx.strokeStyle = 'rgba(37,99,235,.3)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.closePath(); ctx.strokeStyle = RULE_MED; ctx.lineWidth = 1; ctx.stroke();
 
     if (boundary.annular && boundary.inner.length > 2) {
       ctx.beginPath();
       const pi0 = w2c(boundary.inner[0][0], boundary.inner[0][1]); ctx.moveTo(pi0.x, pi0.y);
       for (let i = 1; i < boundary.inner.length; i++) { const p = w2c(boundary.inner[i][0], boundary.inner[i][1]); ctx.lineTo(p.x, p.y); }
-      ctx.closePath(); ctx.strokeStyle = 'rgba(220,38,38,.3)'; ctx.lineWidth = 1;
+      ctx.closePath(); ctx.strokeStyle = 'rgba(139,46,46,.45)'; ctx.lineWidth = 1;
       ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
     }
   }
 
   const dot = w2c(pos.x, pos.y);
-  const dotColor = reachable ? '#2563eb' : '#dc2626';
-  const glowColor = reachable ? 'rgba(37,99,235,.3)' : 'rgba(220,38,38,.3)';
-  ctx.setLineDash([4,4]); ctx.strokeStyle = dotColor; ctx.globalAlpha = .25; ctx.lineWidth = 1;
+  const dotColor = reachable ? CANVAS_INK : AXIS_X;
+  ctx.setLineDash([3,3]); ctx.strokeStyle = dotColor; ctx.globalAlpha = .35; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(dot.x, MARGIN); ctx.lineTo(dot.x, MARGIN+dh); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(MARGIN, dot.y); ctx.lineTo(canvasW-MARGIN_R, dot.y); ctx.stroke();
   ctx.setLineDash([]); ctx.globalAlpha = 1;
 
-  const grad = ctx.createRadialGradient(dot.x, dot.y, 0, dot.x, dot.y, 20);
-  grad.addColorStop(0, glowColor); grad.addColorStop(1, 'transparent');
-  ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(dot.x, dot.y, 20, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = dotColor; ctx.beginPath(); ctx.arc(dot.x, dot.y, 6, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(dot.x, dot.y, 2, 0, Math.PI*2); ctx.fill();
+  // Crosshair target marker (engineering-drawing style, no glow)
+  ctx.strokeStyle = dotColor; ctx.lineWidth = 1.25;
+  ctx.beginPath(); ctx.arc(dot.x, dot.y, 7, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(dot.x - 11, dot.y); ctx.lineTo(dot.x - 4, dot.y);
+  ctx.moveTo(dot.x + 4, dot.y);  ctx.lineTo(dot.x + 11, dot.y);
+  ctx.moveTo(dot.x, dot.y - 11); ctx.lineTo(dot.x, dot.y - 4);
+  ctx.moveTo(dot.x, dot.y + 4);  ctx.lineTo(dot.x, dot.y + 11);
+  ctx.stroke();
+  ctx.fillStyle = dotColor;
+  ctx.beginPath(); ctx.arc(dot.x, dot.y, 2, 0, Math.PI*2); ctx.fill();
 
   $('coordsXY').innerHTML =
-    `<span style="color:#dc2626">X=${Math.round(pos.x)}</span>&ensp;` +
-    `<span style="color:#16a34a">Y=${Math.round(pos.y)}</span>&ensp;` +
-    `<span style="color:#2563eb">Z=${Math.round(pos.z)}</span>`;
+    `<span style="color:${AXIS_X}">X=${String(Math.round(pos.x)).padStart(4,' ')}</span>&ensp;` +
+    `<span style="color:${AXIS_Y}">Y=${String(Math.round(pos.y)).padStart(4,' ')}</span>&ensp;` +
+    `<span style="color:${AXIS_Z}">Z=${String(Math.round(pos.z)).padStart(4,' ')}</span>`;
 }
 
 // ── Pointer Events ──────────────────────────────────────────────────
@@ -882,27 +1000,27 @@ async function runRectangle() {
 async function toggleCamera() {
   const btn = $('btnCamera'), feed = $('cameraFeed'), ph = $('cameraPlaceholder'), msg = $('cameraMsg');
   if (cameraRunning) {
-    btn.textContent = 'Start'; feed.style.display = 'none'; feed.src = '';
-    ph.style.display = 'flex'; msg.textContent = 'Camera off'; cameraRunning = false;
-    detectOn = false; $('btnDetect').style.display = 'none'; $('btnDetect').textContent = 'Detect'; $('btnDetect').classList.remove('btn-primary');
+    btn.textContent = 'START'; feed.style.display = 'none'; feed.src = '';
+    ph.style.display = 'flex'; msg.textContent = 'SENSOR_OFF'; cameraRunning = false;
+    detectOn = false; $('btnDetect').style.display = 'none'; $('btnDetect').textContent = 'DETECT'; $('btnDetect').classList.remove('btn-primary');
     try { await fetch('/api/camera/stop', { method: 'POST' }); } catch {} return;
   }
-  btn.textContent = 'Starting\u2026'; btn.disabled = true; msg.textContent = 'Starting camera\u2026';
+  btn.textContent = 'STARTING\u2026'; btn.disabled = true; msg.textContent = 'INITIALIZING_SENSOR\u2026';
   try {
     const res = await fetch('/api/camera/start', { method: 'POST' });
     const data = await res.json();
-    if (!data.ok) { msg.textContent = data.message || 'Failed'; btn.textContent = 'Start'; btn.disabled = false; return; }
-    cameraRunning = true; btn.textContent = 'Stop'; btn.disabled = false;
+    if (!data.ok) { msg.textContent = (data.message || 'FAILED').toUpperCase(); btn.textContent = 'START'; btn.disabled = false; return; }
+    cameraRunning = true; btn.textContent = 'STOP'; btn.disabled = false;
     $('btnDetect').style.display = '';
     ph.style.display = 'none'; feed.style.display = 'block'; feed.src = '/api/camera/feed?' + Date.now();
-    feed.onerror = () => { if (cameraRunning) { feed.style.display = 'none'; ph.style.display = 'flex'; msg.textContent = 'Feed lost'; } };
-  } catch { msg.textContent = 'Connection error'; btn.textContent = 'Start'; btn.disabled = false; }
+    feed.onerror = () => { if (cameraRunning) { feed.style.display = 'none'; ph.style.display = 'flex'; msg.textContent = 'FEED_LOST'; } };
+  } catch { msg.textContent = 'CONNECTION_ERROR'; btn.textContent = 'START'; btn.disabled = false; }
 }
 let detectOn = false;
 async function toggleDetect() {
   detectOn = !detectOn;
   const btn = $('btnDetect');
-  btn.textContent = detectOn ? 'Detect ON' : 'Detect';
+  btn.textContent = detectOn ? 'DETECT ●' : 'DETECT';
   btn.classList.toggle('btn-primary', detectOn);
   try { await apiPost('/api/camera/overlay', { detections: detectOn }); } catch {}
 }
@@ -911,7 +1029,7 @@ async function checkCameraStatus() {
   try {
     const data = await (await fetch('/api/camera/status')).json();
     if (data.running) {
-      cameraRunning = true; $('btnCamera').textContent = 'Stop';
+      cameraRunning = true; $('btnCamera').textContent = 'STOP';
       $('btnDetect').style.display = '';
       $('cameraPlaceholder').style.display = 'none';
       const feed = $('cameraFeed'); feed.style.display = 'block'; feed.src = '/api/camera/feed?' + Date.now();
@@ -940,9 +1058,9 @@ async function loadHomePosition() {
     const s = await apiGet('/api/state');
     const dot = $('statusDot'), lbl = $('statusLabel');
     dot.className = 'status-dot';
-    if (!s.connected) { lbl.textContent = 'Disconnected'; }
-    else if (s.moving) { dot.classList.add('connected', 'moving'); lbl.textContent = 'Moving \u2014 ' + (s.port || ''); }
-    else { dot.classList.add('connected'); lbl.textContent = 'Idle \u2014 ' + (s.port || ''); }
+    if (!s.connected) { lbl.textContent = 'DISCONNECTED'; }
+    else if (s.moving) { dot.classList.add('connected', 'moving'); lbl.textContent = 'MOVING · ' + (s.port || ''); }
+    else { dot.classList.add('connected'); lbl.textContent = 'IDLE · ' + (s.port || ''); }
     updateConnUI(s.connected);
     if (firstPoll && s.connected && s.port) knownPort = s.port;
 
@@ -959,14 +1077,14 @@ async function loadHomePosition() {
         showCmd(lc.cmd, lc.response, lc.ok); el.dataset.cmd = lc.cmd + lc.time;
       }
     }
-  } catch (e) { if (firstPoll) $('statusLabel').textContent = 'Server unavailable'; }
+  } catch (e) { if (firstPoll) $('statusLabel').textContent = 'SERVER_UNAVAILABLE'; }
   firstPoll = false;
 }
 
 // ── Init ────────────────────────────────────────────────────────────
 let resizeTimer;
     async function init() {
-  $('statusLabel').textContent = 'Checking\u2026';
+  $('statusLabel').textContent = 'CHECKING\u2026';
   await loadGeometry();
   await loadHomePosition();
 
@@ -1004,28 +1122,28 @@ window.addEventListener('load', init);
 <div class="modal-overlay" id="pickTestOverlay" onclick="if(event.target===this)closePickTest()">
   <div class="modal" style="max-width:520px;">
     <div class="modal-header">
-      <span class="modal-title">Pick Test</span>
+      <span class="modal-title">[PICK_TEST]</span>
       <button class="modal-close" onclick="closePickTest()">&times;</button>
     </div>
     <div class="modal-body">
-      <div style="position:relative;background:#000;border-radius:8px;overflow:hidden;">
-        <img id="pickCamFeed" style="width:100%;display:none;border-radius:8px;">
-        <div id="pickCamOff" style="text-align:center;padding:32px 16px;color:#666;font-size:.8rem;">
-          Camera feed — start camera first
+      <div style="position:relative;background:var(--bg-input);border:1px solid var(--rule);overflow:hidden;">
+        <img id="pickCamFeed" style="width:100%;display:none;">
+        <div id="pickCamOff" style="text-align:center;padding:32px 16px;color:var(--text-dim);font-size:.66rem;text-transform:uppercase;letter-spacing:0.12em;">
+          SENSOR_INACTIVE — START CAMERA FIRST
         </div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <label style="font-size:.78rem;font-weight:600;color:var(--text-dim);">Scan gantry</label>
+        <label style="font-size:.64rem;font-weight:500;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.12em;">SCAN_GANTRY</label>
         <input id="pickGantryX" type="number" value="450" min="0" max="625" step="10" class="gantry-input">
         <span class="gantry-unit">mm</span>
-        <label style="font-size:.78rem;font-weight:600;color:var(--text-dim);margin-left:8px;">Hover offset</label>
+        <label style="font-size:.64rem;font-weight:500;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.12em;margin-left:8px;">HOVER_OFFSET</label>
         <input id="pickApproachOffset" type="number" value="50" min="10" max="200" step="5" class="gantry-input">
-        <span class="gantry-unit">mm above</span>
+        <span class="gantry-unit">mm</span>
       </div>
-      <div id="pickLog" style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:.75rem;min-height:100px;max-height:200px;overflow-y:auto;line-height:1.8;color:var(--text-dim);white-space:pre-wrap;"></div>
+      <div id="pickLog" style="background:var(--bg-card);border:1px solid var(--rule);padding:10px 12px;font-family:var(--mono);font-size:.68rem;min-height:100px;max-height:200px;overflow-y:auto;line-height:1.8;color:var(--text-dim);white-space:pre-wrap;"></div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" id="btnPickRun" onclick="runPickTest()">Run</button>
-        <button class="btn" id="btnPickCancel" onclick="cancelPickTest()" style="display:none;color:var(--red);border-color:rgba(220,38,38,.3);">Cancel</button>
+        <button class="btn btn-primary" id="btnPickRun" onclick="runPickTest()">▸ RUN</button>
+        <button class="btn calib-btn-clear" id="btnPickCancel" onclick="cancelPickTest()" style="display:none;">▸ CANCEL</button>
       </div>
     </div>
   </div>
@@ -1065,15 +1183,15 @@ function runPickTest() {
   pickES.onmessage = (e) => {
     const d = JSON.parse(e.data);
     if (d.type === 'step') {
-      log.innerHTML += `<span style="color:var(--accent)">[${d.index}/${d.total}]</span> <b>${d.step}</b>  ${d.detail||''}\n`;
+      log.innerHTML += `<span style="color:var(--text)">(${String(d.index).padStart(2,'0')}/${String(d.total).padStart(2,'0')})</span> <b>${d.step}</b>  <span style="color:var(--text-dim)">${d.detail||''}</span>\n`;
     } else if (d.type === 'error') {
-      log.innerHTML += `<span style="color:var(--red)">ERROR: ${d.message}</span>\n`;
+      log.innerHTML += `<span style="color:var(--red)">● ERROR: ${d.message}</span>\n`;
       pickDone();
     } else if (d.type === 'done') {
-      log.innerHTML += `<span style="color:var(--green)"><b>${d.message}</b></span>\n`;
+      log.innerHTML += `<span style="color:var(--text)"><b>✓ ${d.message}</b></span>\n`;
       pickDone();
     } else if (d.type === 'cancelled') {
-      log.innerHTML += `<span style="color:var(--orange)">Cancelled</span>\n`;
+      log.innerHTML += `<span style="color:var(--orange)">CANCELLED</span>\n`;
       pickDone();
     }
     log.scrollTop = log.scrollHeight;
@@ -1089,280 +1207,6 @@ function pickDone() {
 
 function cancelPickTest() {
   fetch('/api/pick/cancel', { method: 'POST' });
-}
-</script>
-
-<!-- ── Debug Transform Modal ──────────────────────────────────── -->
-<style>
-.debug-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.debug-canvas-wrap {
-  position: relative; background: #fff; border: 1px solid var(--border-subtle);
-  border-radius: 8px; overflow: hidden; aspect-ratio: 1;
-}
-.debug-canvas-wrap canvas { width: 100%; height: 100%; display: block; }
-.debug-canvas-label {
-  position: absolute; top: 6px; left: 8px;
-  font-size: .68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .5px; color: var(--text-dim); pointer-events: none;
-}
-.debug-legend {
-  display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0;
-  font-size: .72rem; color: var(--text-dim);
-}
-.debug-legend-item { display: flex; align-items: center; gap: 4px; }
-.debug-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-.debug-num-grid {
-  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
-  font-family: var(--mono); font-size: .72rem; line-height: 1.6;
-}
-.debug-num-label { color: var(--text-dim); text-align: right; }
-.debug-rmsd-bar {
-  height: 6px; border-radius: 3px; background: var(--border); overflow: hidden;
-}
-.debug-rmsd-fill { height: 100%; border-radius: 3px; transition: width .3s; }
-</style>
-
-<div class="modal-overlay" id="debugTransformOverlay" onclick="if(event.target===this)closeDebugTransform()">
-  <div class="modal" style="max-width:720px;">
-    <div class="modal-header">
-      <span class="modal-title">Debug Transform</span>
-      <button class="modal-close" onclick="closeDebugTransform()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <label style="font-size:.78rem;font-weight:600;color:var(--text-dim);">Scan gantry</label>
-        <input id="debugGantryX" type="number" value="450" min="0" max="625" step="10" class="gantry-input">
-        <span class="gantry-unit">mm</span>
-        <button class="btn btn-primary btn-sm" id="btnDebugRun" onclick="runDebugTransform()">Capture</button>
-      </div>
-
-      <div class="debug-grid">
-        <div class="debug-canvas-wrap">
-          <canvas id="debugCanvasXY"></canvas>
-          <span class="debug-canvas-label">Top-down (X / Y)</span>
-        </div>
-        <div class="debug-canvas-wrap">
-          <canvas id="debugCanvasXZ"></canvas>
-          <span class="debug-canvas-label">Side (X / Z)</span>
-        </div>
-      </div>
-
-      <div class="debug-legend">
-        <span class="debug-legend-item"><span class="debug-swatch" style="background:#16a34a;"></span>Calib ground truth (FK)</span>
-        <span class="debug-legend-item"><span class="debug-swatch" style="background:#dc2626;"></span>Calib camera (R*c+t)</span>
-        <span class="debug-legend-item"><span class="debug-swatch" style="background:#2563eb;border-radius:50%;"></span>Detection (camera)</span>
-        <span class="debug-legend-item"><span class="debug-swatch" style="background:#f97316;border-radius:50%;"></span>TCP target</span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div>
-          <div style="font-size:.74rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Transform chain</div>
-          <div class="debug-num-grid" id="debugNumbers">
-            <span class="debug-num-label">Pixel</span><span id="dbgPixel">—</span>
-            <span class="debug-num-label">Camera 3D</span><span id="dbgCam3d">—</span>
-            <span class="debug-num-label">Delta 3D (R*c+t)</span><span id="dbgDelta3d">—</span>
-            <span class="debug-num-label">World X</span><span id="dbgWorldX">—</span>
-            <span class="debug-num-label">Gantry target</span><span id="dbgGantry">—</span>
-            <span class="debug-num-label">TCP target</span><span id="dbgTcp">—</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:.74rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Calibration quality</div>
-          <div class="debug-num-grid" id="debugCalib">
-            <span class="debug-num-label">RMSD</span><span id="dbgRmsd">—</span>
-            <span class="debug-num-label">Points</span><span id="dbgPts">—</span>
-            <span class="debug-num-label">Inliers</span><span id="dbgInl">—</span>
-            <span class="debug-num-label">Max residual</span><span id="dbgMaxRes">—</span>
-          </div>
-          <div style="margin-top:6px;">
-            <div class="debug-rmsd-bar"><div class="debug-rmsd-fill" id="dbgRmsdBar"></div></div>
-            <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--text-dim);margin-top:2px;">
-              <span>0 mm</span><span>good &lt; 5</span><span>50 mm</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="debugMsg" style="font-size:.78rem;color:var(--text-dim);min-height:1.2em;"></div>
-    </div>
-  </div>
-</div>
-
-<script>
-function openDebugTransform() {
-  $('debugTransformOverlay').classList.add('open');
-}
-function closeDebugTransform() {
-  $('debugTransformOverlay').classList.remove('open');
-}
-
-let _debugData = null;
-
-async function runDebugTransform() {
-  const gx = parseFloat($('debugGantryX').value) || 450;
-  $('btnDebugRun').disabled = true;
-  $('debugMsg').textContent = 'Capturing…';
-  $('debugMsg').style.color = 'var(--text-dim)';
-  try {
-    const r = await apiGet(`/api/debug/pick_transform?gantry_x=${gx}`);
-    if (!r.ok) { $('debugMsg').textContent = r.message || 'Error'; $('debugMsg').style.color = 'var(--red)'; return; }
-    _debugData = r;
-    renderDebugNumbers(r);
-    renderDebugCanvas(r);
-    $('debugMsg').textContent = `${r.detection.label} (${(r.detection.confidence*100).toFixed(0)}%)`;
-    $('debugMsg').style.color = 'var(--green)';
-  } catch (e) {
-    $('debugMsg').textContent = String(e);
-    $('debugMsg').style.color = 'var(--red)';
-  } finally {
-    $('btnDebugRun').disabled = false;
-  }
-}
-
-function renderDebugNumbers(d) {
-  const fmt = a => `(${a.map(v => v.toFixed(1)).join(', ')})`;
-  $('dbgPixel').textContent = `(${d.detection.pixel[0]}, ${d.detection.pixel[1]})`;
-  $('dbgCam3d').textContent = fmt(d.camera_point);
-  $('dbgDelta3d').textContent = fmt(d.delta_point);
-  $('dbgWorldX').textContent = `${d.world_x.toFixed(1)} mm  (gantry ${d.gantry_scan.toFixed(0)} + dx ${d.delta_point[0].toFixed(1)})`;
-  $('dbgGantry').textContent = `${d.gantry_pick.toFixed(1)} mm`;
-  $('dbgTcp').textContent = fmt(d.tcp_target);
-
-  const cal = d.calibration;
-  if (cal.rmsd != null) {
-    $('dbgRmsd').innerHTML = `<span style="color:${cal.rmsd < 5 ? 'var(--green)' : cal.rmsd < 15 ? 'var(--orange)' : 'var(--red)'};font-weight:700;">${cal.rmsd.toFixed(2)} mm</span>`;
-    $('dbgPts').textContent = cal.num_points ?? '—';
-    $('dbgInl').textContent = cal.num_inliers ?? '—';
-    const maxR = cal.residuals ? Math.max(...cal.residuals) : 0;
-    $('dbgMaxRes').textContent = `${maxR.toFixed(1)} mm`;
-    const pct = Math.min(100, (cal.rmsd / 50) * 100);
-    const bar = $('dbgRmsdBar');
-    bar.style.width = pct + '%';
-    bar.style.background = cal.rmsd < 5 ? 'var(--green)' : cal.rmsd < 15 ? 'var(--orange)' : 'var(--red)';
-  }
-}
-
-function renderDebugCanvas(d) {
-  drawDebugView('debugCanvasXY', d, 0, 1, 'X', 'Y');
-  drawDebugView('debugCanvasXZ', d, 0, 2, 'X', 'Z');
-}
-
-function drawDebugView(canvasId, d, ai, bi, aLabel, bLabel) {
-  const canvas = $(canvasId);
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  const W = rect.width, H = rect.height;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-
-  // Gather all points for auto-scaling
-  const allA = [], allB = [];
-  function addPt(a, b) { allA.push(a); allB.push(b); }
-
-  addPt(d.delta_point[ai], d.delta_point[bi]);
-  addPt(d.tcp_target[ai], d.tcp_target[bi]);
-  for (const p of d.calibration_overlay) {
-    addPt(p.delta_gt[ai], p.delta_gt[bi]);
-    addPt(p.camera_transformed[ai], p.camera_transformed[bi]);
-  }
-
-  if (allA.length === 0) return;
-  const margin = 40;
-  const minA = Math.min(...allA), maxA = Math.max(...allA);
-  const minB = Math.min(...allB), maxB = Math.max(...allB);
-  const padA = Math.max(30, (maxA - minA) * 0.15);
-  const padB = Math.max(30, (maxB - minB) * 0.15);
-  const rangeA = (maxA - minA) + 2 * padA || 100;
-  const rangeB = (maxB - minB) + 2 * padB || 100;
-  const cA = (minA + maxA) / 2, cB = (minB + maxB) / 2;
-  const scale = Math.min((W - 2 * margin) / rangeA, (H - 2 * margin) / rangeB);
-
-  function toCanvas(a, b) {
-    return {
-      x: W / 2 + (a - cA) * scale,
-      y: H / 2 - (b - cB) * scale,
-    };
-  }
-
-  // Background
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, W, H);
-
-  // Grid
-  const gridStep = Math.pow(10, Math.floor(Math.log10(rangeA / 4)));
-  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-  ctx.lineWidth = 1;
-  const gMinA = Math.floor((cA - rangeA / 2) / gridStep) * gridStep;
-  const gMaxA = Math.ceil((cA + rangeA / 2) / gridStep) * gridStep;
-  const gMinB = Math.floor((cB - rangeB / 2) / gridStep) * gridStep;
-  const gMaxB = Math.ceil((cB + rangeB / 2) / gridStep) * gridStep;
-  ctx.font = '9px system-ui,sans-serif';
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  for (let a = gMinA; a <= gMaxA; a += gridStep) {
-    const p = toCanvas(a, cB);
-    ctx.beginPath(); ctx.moveTo(p.x, margin); ctx.lineTo(p.x, H - margin); ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillText(a.toFixed(0), p.x, H - margin + 12);
-  }
-  for (let b = gMinB; b <= gMaxB; b += gridStep) {
-    const p = toCanvas(cA, b);
-    ctx.beginPath(); ctx.moveTo(margin, p.y); ctx.lineTo(W - margin, p.y); ctx.stroke();
-    ctx.textAlign = 'right'; ctx.fillText(b.toFixed(0), margin - 4, p.y + 3);
-  }
-
-  // Axis labels
-  ctx.font = 'bold 11px system-ui,sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#dc2626'; ctx.fillText(aLabel, W / 2, H - 4);
-  ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = bi === 1 ? '#16a34a' : '#2563eb'; ctx.fillText(bLabel, 0, 0); ctx.restore();
-
-  // Calibration residual lines + points
-  for (const p of d.calibration_overlay) {
-    const gt = toCanvas(p.delta_gt[ai], p.delta_gt[bi]);
-    const ct = toCanvas(p.camera_transformed[ai], p.camera_transformed[bi]);
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(gt.x, gt.y); ctx.lineTo(ct.x, ct.y); ctx.stroke();
-
-    ctx.fillStyle = '#16a34a';
-    ctx.beginPath(); ctx.arc(gt.x, gt.y, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#dc2626';
-    ctx.beginPath(); ctx.arc(ct.x, ct.y, 4, 0, Math.PI * 2); ctx.fill();
-  }
-
-  // Detection point (camera → delta)
-  const det = toCanvas(d.delta_point[ai], d.delta_point[bi]);
-  ctx.fillStyle = 'rgba(37,99,235,0.15)';
-  ctx.beginPath(); ctx.arc(det.x, det.y, 14, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#2563eb';
-  ctx.beginPath(); ctx.arc(det.x, det.y, 6, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(det.x, det.y, 2, 0, Math.PI * 2); ctx.fill();
-
-  // TCP target
-  const tcp = toCanvas(d.tcp_target[ai], d.tcp_target[bi]);
-  ctx.save();
-  ctx.translate(tcp.x, tcp.y); ctx.rotate(Math.PI / 4);
-  ctx.fillStyle = '#f97316';
-  ctx.fillRect(-5, -5, 10, 10);
-  ctx.restore();
-
-  // Line from detection to TCP
-  ctx.setLineDash([4, 3]);
-  ctx.strokeStyle = 'rgba(249,115,22,0.5)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(det.x, det.y); ctx.lineTo(tcp.x, tcp.y); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Labels
-  ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'left';
-  ctx.fillStyle = '#2563eb'; ctx.fillText('cam→delta', det.x + 10, det.y - 4);
-  ctx.fillStyle = '#f97316'; ctx.fillText('TCP', tcp.x + 8, tcp.y - 4);
-
-  // Origin crosshair
-  const origin = toCanvas(0, 0);
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(origin.x - 8, origin.y); ctx.lineTo(origin.x + 8, origin.y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(origin.x, origin.y - 8); ctx.lineTo(origin.x, origin.y + 8); ctx.stroke();
 }
 </script>
 

@@ -2,73 +2,71 @@
 <div class="modal-overlay" id="homingModal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Homing Wizard</span>
+      <span class="modal-title">[HOMING_WIZARD]</span>
       <button class="modal-close" onclick="closeHomingWizard()">&times;</button>
     </div>
     <div class="modal-body">
       <div class="step active" id="wizStep1">
         <div class="step-header">
           <div class="step-number">1</div>
-          <div class="step-title">Connect</div>
+          <div class="step-title">[CONNECT]</div>
         </div>
-        <div class="step-desc">Select the ESP32 serial port and connect to the robot.</div>
+        <div class="step-desc">Select the ESP32 serial port and establish the link.</div>
         <div class="port-row">
-          <select id="wizPortSelect"><option value="">Scanning...</option></select>
-          <button class="btn btn-sm" onclick="wizRefreshPorts()">Refresh</button>
-          <button class="btn btn-primary btn-sm" id="wizBtnConnect" onclick="wizDoConnect()">Connect</button>
+          <select id="wizPortSelect"><option value="">SCANNING…</option></select>
+          <button class="btn btn-sm" onclick="wizRefreshPorts()">REFRESH</button>
+          <button class="btn btn-primary btn-sm" id="wizBtnConnect" onclick="wizDoConnect()">▸ CONNECT</button>
         </div>
         <div class="status-msg" id="wizStep1Status"></div>
       </div>
       <div class="step" id="wizStep2">
         <div class="step-header">
           <div class="step-number">2</div>
-          <div class="step-title">Home Gantry</div>
+          <div class="step-title">[HOME_GANTRY]</div>
         </div>
         <div class="step-desc">
-          The gantry will move toward the endstop switch, zero its position,
-          and back off slightly. Keep the rail clear.
+          Gantry will travel to the endstop, zero its position, and back off.
+          Keep the rail clear.
         </div>
-        <button class="btn btn-primary" id="wizBtnGantryHome" onclick="wizDoGantryHome()">Start Gantry Home</button>
+        <button class="btn btn-primary" id="wizBtnGantryHome" onclick="wizDoGantryHome()">▸ START GANTRY HOME</button>
         <div class="status-msg" id="wizStep2Status"></div>
       </div>
       <div class="step" id="wizStep3">
         <div class="step-header">
           <div class="step-number">3</div>
-          <div class="step-title">Zero Delta at Mechanical Limit</div>
+          <div class="step-title">[ZERO_DELTA_AT_LIMIT]</div>
         </div>
         <div class="step-desc">
-          Delta motors are now <strong>released</strong> — move all three arms to the
-          <strong>mechanical stop</strong> (highest position), then press the button to
-          lock motors and set the zero reference.
+          Delta motors are <strong>released</strong>. Move all three arms to the
+          <strong>mechanical stop</strong> (highest position), then lock and zero.
         </div>
         <div class="wiz-pos-grid">
-          <div class="wiz-pos-cell"><div class="label">Motor 1</div><div class="value" id="wizPosD1">--</div></div>
-          <div class="wiz-pos-cell"><div class="label">Motor 2</div><div class="value" id="wizPosD2">--</div></div>
-          <div class="wiz-pos-cell"><div class="label">Motor 3</div><div class="value" id="wizPosD3">--</div></div>
-          <div class="wiz-pos-cell"><div class="label">Gantry</div><div class="value" id="wizPosGx">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">M_01</div><div class="value" id="wizPosD1">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">M_02</div><div class="value" id="wizPosD2">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">M_03</div><div class="value" id="wizPosD3">--</div></div>
+          <div class="wiz-pos-cell"><div class="label">GANTRY</div><div class="value" id="wizPosGx">--</div></div>
         </div>
         <div style="margin-top:12px;">
-          <button class="btn btn-home" id="wizBtnSetZero" onclick="wizDoSetDeltaZero()">Zero at Limit</button>
+          <button class="btn btn-home" id="wizBtnSetZero" onclick="wizDoSetDeltaZero()">▸ ZERO AT LIMIT</button>
         </div>
         <div class="status-msg" id="wizStep3Status"></div>
       </div>
       <div class="step" id="wizStep4">
         <div class="step-header">
           <div class="step-number">4</div>
-          <div class="step-title">Move to Home Position</div>
+          <div class="step-title">[MOVE_TO_HOME]</div>
         </div>
         <div class="step-desc">
-          Move all three arms to the safe <strong>home</strong> position
-          (15&deg; above horizontal). This backs off from the hard stop and becomes
-          the operational starting pose.
+          Move all three arms to the safe <strong>home</strong> pose
+          (15&deg; above horizontal) — the operational starting position.
         </div>
-        <button class="btn btn-home" id="wizBtnMoveHome" onclick="wizDoMoveToHome()">Move to Home</button>
+        <button class="btn btn-home" id="wizBtnMoveHome" onclick="wizDoMoveToHome()">▸ MOVE TO HOME</button>
         <div class="status-msg" id="wizStep4Status"></div>
       </div>
       <div class="done-banner" id="wizDoneBanner">
-        <h3>Homing Complete</h3>
-        <p>Gantry zeroed at endstop. Delta zeroed at mechanical limit and parked at home. Ready to operate.</p>
-        <button class="btn btn-primary" onclick="closeHomingWizard()">Done</button>
+        <h3>HOMING_COMPLETE</h3>
+        <p>GANTRY ZEROED · DELTA ZEROED AT LIMIT · PARKED AT HOME</p>
+        <button class="btn btn-primary" onclick="closeHomingWizard()">▸ DONE</button>
       </div>
     </div>
   </div>
@@ -118,7 +116,7 @@ async function wizRefreshPorts(preselectPort) {
     const ports = await apiGet('/api/ports');
     const sel = $('wizPortSelect'), prev = sel.value;
     sel.innerHTML = '';
-    if (!ports.length) { sel.innerHTML = '<option value="">No ports found</option>'; return; }
+    if (!ports.length) { sel.innerHTML = '<option value="">NO_PORTS_FOUND</option>'; return; }
     let usbDev = null;
     ports.forEach(p => {
       const opt = document.createElement('option');
@@ -195,9 +193,7 @@ async function wizDoMoveToHome() {
     const res = await apiPost('/api/move', { d1: home.delta_angle_1, d2: home.delta_angle_2, d3: home.delta_angle_3 });
     if (!res.ok) { wizSetStatus('wizStep4Status', 'Move failed: ' + (res.response || ''), 'err'); $('wizBtnMoveHome').disabled = false; return; }
     await wizWaitIdle('wizStep4Status', 'Moving to home position...');
-    wizSetStatus('wizStep4Status', 'At home position.', 'ok');
-    $('wizStep4').classList.remove('active'); $('wizStep4').classList.add('done');
-    $('wizDoneBanner').classList.add('show');
+    closeHomingWizard();
   } catch (e) { wizSetStatus('wizStep4Status', 'Error: ' + e.message, 'err'); $('wizBtnMoveHome').disabled = false; }
 }
 async function wizInit() {

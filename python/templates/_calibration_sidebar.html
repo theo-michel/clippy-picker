@@ -1,7 +1,7 @@
 <!-- Calibration Sidebar -->
 <aside class="calib-sidebar" id="calibSidebar">
   <div class="calib-header">
-    <span class="calib-title">Camera Calibration</span>
+    <span class="calib-title">[CAMERA_CALIBRATION]</span>
     <button class="modal-close" onclick="closeCalibSidebar()">&times;</button>
   </div>
 
@@ -10,41 +10,41 @@
     <div class="calib-status-row">
       <div class="calib-status-item">
         <span class="calib-status-dot" id="calCameraDot"></span>
-        <span id="calCameraLabel">Camera off</span>
+        <span id="calCameraLabel">SENSOR_OFF</span>
       </div>
       <div class="calib-status-item">
         <span class="calib-status-dot" id="calRobotDot"></span>
-        <span id="calRobotLabel">Disconnected</span>
+        <span id="calRobotLabel">DISCONNECTED</span>
       </div>
     </div>
-    <button class="btn btn-sm" id="calBtnStartCam" onclick="calStartCamera()" style="display:none;width:100%;">Start Camera</button>
+    <button class="btn btn-sm" id="calBtnStartCam" onclick="calStartCamera()" style="display:none;width:100%;">▸ START SENSOR</button>
 
     <div class="calib-divider"></div>
 
     <!-- Capture -->
     <button class="btn btn-primary calib-capture-btn" id="calBtnCapture" onclick="calCapturePoint()">
-      Capture Point
+      ▸ CAPTURE POINT
     </button>
     <button class="btn calib-capture-btn" id="calBtnAuto" onclick="calAutoStart()" style="margin-top:4px;">
-      Auto Calibrate
+      ▸ AUTO CALIBRATE
     </button>
     <div id="calAutoProgress" style="display:none;">
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-        <div style="flex:1;height:5px;border-radius:3px;background:var(--border-subtle);overflow:hidden;">
-          <div id="calAutoBar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .3s;"></div>
+        <div style="flex:1;height:2px;background:var(--rule);overflow:hidden;">
+          <div id="calAutoBar" style="height:100%;width:0%;background:var(--text);transition:width .3s;"></div>
         </div>
-        <span id="calAutoLabel" style="font-size:.72rem;font-family:var(--mono);color:var(--text-dim);white-space:nowrap;">0/20</span>
+        <span id="calAutoLabel" style="font-size:.64rem;font-family:var(--mono);color:var(--text-dim);white-space:nowrap;letter-spacing:0.08em;">0/20</span>
       </div>
       <div id="calAutoMsg" class="status-msg" style="margin-top:4px;"></div>
-      <button class="btn btn-sm calib-btn-clear" id="calBtnAutoCancel" onclick="calAutoCancel()" style="width:100%;margin-top:4px;">Cancel</button>
+      <button class="btn btn-sm calib-btn-clear" id="calBtnAutoCancel" onclick="calAutoCancel()" style="width:100%;margin-top:4px;">▸ CANCEL</button>
     </div>
     <div class="calib-point-count">
-      <span id="calPointCount">0</span> points
-      <span class="calib-point-hint">(&ge;4 required, 10+ recommended)</span>
+      <span id="calPointCount">0</span> POINTS
+      <span class="calib-point-hint">(&ge;4 REQUIRED · 10+ RECOMMENDED)</span>
     </div>
     <p class="calib-guidance">
-      Move the robot with the dashboard controls, or use Auto Calibrate for a spiral sweep.
-      Ensure the ArUco marker is visible in the camera.
+      JOG THE ROBOT MANUALLY, OR RUN AUTO_CALIBRATE FOR A SPIRAL SWEEP.
+      ARUCO MARKER MUST REMAIN IN FRAME.
     </p>
     <div class="status-msg" id="calCaptureStatus"></div>
 
@@ -54,7 +54,7 @@
     <div class="calib-table-wrap" id="calTableWrap">
       <table class="calib-table">
         <thead>
-          <tr><th>#</th><th>Delta (mm)</th><th>Cam (mm)</th><th>Err</th><th></th></tr>
+          <tr><th>#</th><th>DELTA (mm)</th><th>CAM (mm)</th><th>ERR</th><th></th></tr>
         </thead>
         <tbody id="calPointsBody"></tbody>
       </table>
@@ -74,9 +74,9 @@
 
     <!-- Actions -->
     <div class="calib-actions">
-      <button class="btn btn-primary" id="calBtnSolve" onclick="calSolve()" disabled>Solve</button>
-      <button class="btn" id="calBtnSave" onclick="calSave()" disabled>Save</button>
-      <button class="btn calib-btn-clear" id="calBtnClear" onclick="calClear()">Clear All</button>
+      <button class="btn btn-primary" id="calBtnSolve" onclick="calSolve()" disabled>▸ SOLVE</button>
+      <button class="btn" id="calBtnSave" onclick="calSave()" disabled>▸ SAVE</button>
+      <button class="btn calib-btn-clear" id="calBtnClear" onclick="calClear()">▸ CLEAR</button>
     </div>
     <div class="status-msg" id="calActionStatus"></div>
   </div>
@@ -104,13 +104,13 @@ function calUpdateStatus() {
   const camOn = cameraRunning;
   const camDot = $('calCameraDot'), camLbl = $('calCameraLabel');
   camDot.className = 'calib-status-dot' + (camOn ? ' on' : '');
-  camLbl.textContent = camOn ? 'Camera running' : 'Camera off';
+  camLbl.textContent = camOn ? 'SENSOR_ACTIVE' : 'SENSOR_OFF';
   $('calBtnStartCam').style.display = camOn ? 'none' : '';
 
   const conn = $('statusDot').classList.contains('connected');
   const robDot = $('calRobotDot'), robLbl = $('calRobotLabel');
   robDot.className = 'calib-status-dot' + (conn ? ' on' : '');
-  robLbl.textContent = conn ? 'Connected' : 'Disconnected';
+  robLbl.textContent = conn ? 'LINK_ACTIVE' : 'DISCONNECTED';
 
   const ready = camOn && conn && !calAutoRunning;
   $('calBtnCapture').disabled = !ready;
@@ -177,7 +177,7 @@ function calRenderPoints() {
   const tbody = $('calPointsBody');
   $('calPointCount').textContent = calPoints.length;
   if (!calPoints.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:12px;">No points captured</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:12px;text-transform:uppercase;letter-spacing:0.12em;">NO_POINTS_CAPTURED</td></tr>';
     return;
   }
   const rows = calPoints.map((p, i) => {
@@ -234,7 +234,7 @@ function calRenderResult() {
   const rows = R.map((row, i) =>
     `<div class="calib-matrix-row">${row.map(fmt).join('  ')}  ${fmt(t[i])}</div>`
   );
-  $('calMatrix').innerHTML = '<div class="calib-label" style="margin-bottom:4px;">D_T_c  (R | t)</div>' + rows.join('');
+  $('calMatrix').innerHTML = '<div class="calib-label" style="margin-bottom:4px;">D_T_c · (R | t)</div>' + rows.join('');
 }
 
 async function calSave() {
@@ -284,7 +284,7 @@ function calAutoStart() {
   $('calAutoProgress').style.display = '';
   $('calAutoBar').style.width = '0%';
   $('calAutoLabel').textContent = '0/?';
-  $('calAutoMsg').textContent = 'Starting...';
+  $('calAutoMsg').textContent = 'STARTING…';
   $('calAutoMsg').className = 'status-msg busy';
 
   calAutoSource = new EventSource('/api/calibration/auto');
@@ -294,29 +294,29 @@ function calAutoStart() {
     if (d.type === 'moving') {
       $('calAutoBar').style.width = ((d.index / d.total) * 100) + '%';
       $('calAutoLabel').textContent = d.index + '/' + d.total;
-      $('calAutoMsg').textContent = 'Moving to (' + d.target.join(', ') + ')...';
+      $('calAutoMsg').textContent = 'MOVING → (' + d.target.join(', ') + ')';
       $('calAutoMsg').className = 'status-msg busy';
     } else if (d.type === 'captured') {
       calPoints.push(d.point);
       calRenderPoints();
       $('calAutoBar').style.width = (((d.index + 1) / d.total) * 100) + '%';
       $('calAutoLabel').textContent = (d.index + 1) + '/' + d.total;
-      $('calAutoMsg').textContent = 'Captured #' + d.num_points;
+      $('calAutoMsg').textContent = 'CAPTURED #' + d.num_points;
       $('calAutoMsg').className = 'status-msg ok';
     } else if (d.type === 'skip') {
-      $('calAutoMsg').textContent = 'Skip: ' + d.message;
+      $('calAutoMsg').textContent = 'SKIP · ' + (d.message || '').toUpperCase();
       $('calAutoMsg').className = 'status-msg err';
     } else if (d.type === 'done') {
-      calAutoFinish('Done — ' + d.num_points + ' points captured', true);
+      calAutoFinish('DONE · ' + d.num_points + ' POINTS CAPTURED', true);
     } else if (d.type === 'cancelled') {
-      calAutoFinish('Cancelled', false);
+      calAutoFinish('CANCELLED', false);
     } else if (d.type === 'error') {
-      calAutoFinish(d.message, false);
+      calAutoFinish((d.message || '').toUpperCase(), false);
     }
   };
 
   calAutoSource.onerror = () => {
-    calAutoFinish('Connection lost', false);
+    calAutoFinish('CONNECTION_LOST', false);
   };
 }
 
