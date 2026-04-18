@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
+
 import numpy as np
 from flask import (
     Flask,
@@ -28,7 +32,7 @@ import serial.tools.list_ports
 from delta_robot import DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
 from calibration.extrinsic.kabsch import kabsch
-from object_detection import ObjectDetector
+from object_detection import ObjectPointer, VLMError
 
 try:
     from camera import StereoCamera, camera_available
@@ -82,8 +86,8 @@ calibration_points: list[dict] = []  # [{"d_point": [x,y,z], "c_point": [x,y,z]}
 calibration_result: dict | None = None  # {"R": ..., "t": ..., "rmsd": ..., ...}
 auto_cal_cancel = threading.Event()
 
-# Object detection
-detector = ObjectDetector()
+# Object pointing (VLM)
+pointer = ObjectPointer()
 pick_test_cancel = threading.Event()
 
 # Inverse kinematics (all dimensions in mm)
@@ -642,16 +646,44 @@ def api_camera_feed():
     )
 
 
+@app.route("/api/camera/pointcloud.ply")
+def api_camera_pointcloud():
+    """Download the current frame as a binary PLY point cloud.
+
+    Query params:
+      - ``stride`` (int, default 2): decimation factor. 1 = full density.
+      - ``z_min``, ``z_max`` (float mm): depth clip range.
+    """
+    stride = max(1, int(request.args.get("stride", 2)))
+    z_min = float(request.args.get("z_min", 100.0))
+    z_max = float(request.args.get("z_max", 1500.0))
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Camera not running"}), 400
+        ply = camera.get_pointcloud_ply(
+            z_min_mm=z_min, z_max_mm=z_max, stride=stride
+        )
+
+    if ply is None:
+        return jsonify({"ok": False, "message": "No frame available yet"}), 503
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
+    filename = f"pointcloud_{ts}.ply"
+    return Response(
+        ply,
+        mimetype="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.route("/api/camera/overlay", methods=["POST"])
 def api_camera_overlay():
     data = request.json or {}
     with camera_lock:
         if not camera or not camera.running:
             return jsonify({"ok": False, "message": "Camera not running"}), 400
-        camera.set_overlay(
-            aruco=bool(data.get("aruco", False)),
-            detections=bool(data.get("detections", False)),
-        )
+        camera.set_overlay(aruco=bool(data.get("aruco", False)))
     return jsonify({"ok": True})
 
 
@@ -941,178 +973,29 @@ def api_calibration_clear():
 
 
 # ====================================================================== #
-#  Object Detection
-# ====================================================================== #
-
-
-def _detections_to_world(detections_raw, cam):
-    """Convert raw detections to world-frame dicts.
-
-    Returns a list of dicts with pixel, delta-frame, and world-frame info.
-    Drops any detection that has no depth.
-    """
-    from coordinates import camera_to_robot
-
-    gantry_x = state.get("gantry_mm", 0.0)
-    results = []
-    for det in detections_raw:
-        u, v = int(round(det.center_uv[0])), int(round(det.center_uv[1]))
-        c_point = cam.deproject(u, v)
-        if c_point is None:
-            continue
-        d_point = camera_to_robot(np.array(c_point))
-        world_x = gantry_x + d_point[0]
-        world_y = float(d_point[1])
-        world_z = float(d_point[2])
-        results.append(
-            {
-                "pixel": [det.center_uv[0], det.center_uv[1]],
-                "bbox": list(det.bbox),
-                "label": det.label,
-                "confidence": round(det.confidence, 3),
-                "delta": [
-                    round(float(d_point[0]), 2),
-                    round(float(d_point[1]), 2),
-                    round(float(d_point[2]), 2),
-                ],
-                "world": [round(world_x, 2), round(world_y, 2), round(world_z, 2)],
-            }
-        )
-    return results
-
-
-@app.route("/api/detect/scan", methods=["POST"])
-def api_detect_scan():
-    """Run object detection on the current camera frame.
-
-    Body (optional): ``{"tray": 3}`` — filter to a specific tray.
-    """
-    from coordinates import TRAY_REGIONS
-
-    data = request.json or {}
-    tray = data.get("tray")
-
-    with camera_lock:
-        if not camera or not camera.running:
-            return jsonify({"ok": False, "message": "Camera not running"}), 400
-        frame = camera.get_color_frame()
-
-    if frame is None:
-        return jsonify({"ok": False, "message": "No frame available"}), 400
-
-    raw = detector.detect(frame)
-    world_dets = _detections_to_world(raw, camera)
-
-    if tray is not None:
-        tray = int(tray)
-        region = TRAY_REGIONS.get(tray)
-        if region is None:
-            return jsonify({"ok": False, "message": f"Unknown tray {tray}"}), 400
-        world_dets = [
-            d for d in world_dets if region.contains(d["world"][0], d["world"][1])
-        ]
-
-    return jsonify(
-        {"ok": True, "tray": tray, "detections": world_dets, "count": len(world_dets)}
-    )
-
-
-@app.route("/api/detect/pick", methods=["POST"])
-def api_detect_pick():
-    """Detect objects in a tray, pick one at random, and move the TCP there.
-
-    Body: ``{"tray": 3, "class_name": "stepper_motor"}``
-    ``tray`` is required.  ``class_name`` is an optional filter.
-    """
-    import random
-
-    from coordinates import GANTRY_X_MAX, GANTRY_X_MIN, TRAY_REGIONS
-
-    data = request.json or {}
-    tray = data.get("tray")
-    class_name = data.get("class_name")
-
-    if tray is None:
-        return jsonify({"ok": False, "message": "tray is required"}), 400
-    tray = int(tray)
-    region = TRAY_REGIONS.get(tray)
-    if region is None:
-        return jsonify({"ok": False, "message": f"Unknown tray {tray}"}), 400
-
-    with camera_lock:
-        if not camera or not camera.running:
-            return jsonify({"ok": False, "message": "Camera not running"}), 400
-        frame = camera.get_color_frame()
-
-    if frame is None:
-        return jsonify({"ok": False, "message": "No frame available"}), 400
-
-    raw = detector.detect(frame)
-    world_dets = _detections_to_world(raw, camera)
-
-    # Filter to tray
-    world_dets = [
-        d for d in world_dets if region.contains(d["world"][0], d["world"][1])
-    ]
-
-    # Optional class filter
-    if class_name:
-        world_dets = [d for d in world_dets if d["label"] == class_name]
-
-    if not world_dets:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "message": "No detections in tray",
-                    "tray": tray,
-                    "count": 0,
-                }
-            ),
-            404,
-        )
-
-    chosen = random.choice(world_dets)
-    world_x, world_y, world_z = chosen["world"]
-
-    # Split into gantry + delta
-    gantry_target = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
-    delta_x = world_x - gantry_target
-    delta_y = world_y
-    delta_z = world_z
-
-    with robot_lock:
-        if robot is None:
-            return jsonify({"ok": False, "message": "Robot not connected"}), 400
-        try:
-            robot.move_to_position_tcp_and_wait(
-                gantry_target, delta_x, delta_y, delta_z
-            )
-        except (DeltaRobotError, ValueError) as e:
-            return jsonify({"ok": False, "message": str(e), "detection": chosen}), 400
-
-    return jsonify(
-        {
-            "ok": True,
-            "tray": tray,
-            "detection": chosen,
-            "motion": {
-                "gantry_x": round(gantry_target, 2),
-                "delta": [round(delta_x, 2), round(delta_y, 2), round(delta_z, 2)],
-            },
-        }
-    )
-
-
-# ====================================================================== #
 #  Pick Test (SSE)
 # ====================================================================== #
 
 
-@app.route("/api/pick")
+def _get_description(request_obj) -> str | None:
+    """Pull the target description from query args or JSON body."""
+    desc = request_obj.args.get("description")
+    if not desc and request_obj.is_json:
+        desc = (request_obj.get_json(silent=True) or {}).get("description")
+    return (desc or "").strip() or None
+
+
+@app.route("/api/pick", methods=["GET", "POST"])
 def api_pick():
-    """Run a pick-and-return sequence.  Streams SSE progress events."""
+    """Run a pick-and-return sequence.  Streams SSE progress events.
+
+    Requires a ``description`` of the object to pick (query string or JSON body).
+    """
     from pick import pick_sequence
+
+    description = _get_description(request)
+    if not description:
+        return jsonify({"ok": False, "message": "description is required"}), 400
 
     scan_gx = float(request.args.get("gantry_x", 450))
     approach_offset = float(request.args.get("approach_offset", 50))
@@ -1130,7 +1013,8 @@ def api_pick():
         for event in pick_sequence(
             robot,
             camera,
-            detector,
+            pointer,
+            description,
             scan_gx=scan_gx,
             approach_offset=approach_offset,
             cancel=pick_test_cancel,
@@ -1138,6 +1022,51 @@ def api_pick():
             yield f"data: {json.dumps(event)}\n\n"
 
     return Response(stream_with_context(generate()), content_type="text/event-stream")
+
+
+@app.route("/api/vlm/point", methods=["GET", "POST"])
+def api_vlm_point():
+    """Run the VLM on the current camera frame and return an annotated snapshot.
+
+    Does not require the robot. Useful for previewing what Gemini sees before
+    (or instead of) running a full pick sequence.
+    """
+    from pick import _encode_annotated_frame
+
+    description = _get_description(request)
+    if not description:
+        return jsonify({"ok": False, "message": "description is required"}), 400
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Start the camera first"}), 400
+        frame = camera.get_color_frame()
+
+    if frame is None:
+        return jsonify({"ok": False, "message": "No camera frame available"}), 503
+
+    try:
+        point = pointer.point(frame, description)
+    except VLMError as exc:
+        return jsonify({"ok": False, "message": f"VLM error: {exc}"}), 502
+
+    if point is None:
+        return jsonify(
+            {"ok": False, "message": f"VLM could not locate {description!r}"}
+        ), 404
+
+    u, v = int(round(point.u)), int(round(point.v))
+    h, w = frame.shape[:2]
+    return jsonify(
+        {
+            "ok": True,
+            "description": description,
+            "label": point.label,
+            "pixel": [u, v],
+            "frame_size": [w, h],
+            "frame": _encode_annotated_frame(frame, u, v, point.label),
+        }
+    )
 
 
 @app.route("/api/pick/cancel", methods=["POST"])
@@ -1153,14 +1082,20 @@ def api_pick_cancel():
 
 @app.route("/api/debug/pick_transform")
 def api_debug_pick_transform():
-    """Return full camera→delta transform chain for the current frame."""
+    """Return full camera→delta transform chain for the current frame.
+
+    Requires ``description`` query arg — the object for the VLM to point at.
+    """
     from coordinates import (
         GANTRY_X_MIN,
         GANTRY_X_MAX,
         TCP_OFFSET_FROM_EE,
-        camera_to_robot,
         load_camera_transform,
     )
+
+    description = _get_description(request)
+    if not description:
+        return jsonify({"ok": False, "message": "description is required"}), 400
 
     scan_gx = float(request.args.get("gantry_x", state.get("gantry_mm", 450)))
 
@@ -1172,12 +1107,15 @@ def api_debug_pick_transform():
     if frame is None:
         return jsonify({"ok": False, "message": "No frame available"}), 400
 
-    dets = detector.detect(frame, conf=0.3)
-    if not dets:
-        return jsonify({"ok": False, "message": "No objects detected"}), 400
+    try:
+        point = pointer.point(frame, description)
+    except VLMError as e:
+        return jsonify({"ok": False, "message": str(e)}), 502
 
-    best = max(dets, key=lambda d: d.confidence)
-    u, v = int(round(best.center_uv[0])), int(round(best.center_uv[1]))
+    if point is None:
+        return jsonify({"ok": False, "message": f"VLM could not locate {description!r}"}), 404
+
+    u, v = int(round(point.u)), int(round(point.v))
 
     with camera_lock:
         c_point = camera.deproject(u, v, patch=5) if camera else None
@@ -1193,7 +1131,6 @@ def api_debug_pick_transform():
     gantry_pick = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
     pick_dx = world_x - gantry_pick
 
-    # Transform all calibration points for overlay
     calib_overlay = []
     for pt in calibration_points:
         cp = np.array(pt["c_point"])
@@ -1215,11 +1152,10 @@ def api_debug_pick_transform():
     return jsonify(
         {
             "ok": True,
-            "detection": {
-                "label": best.label,
-                "confidence": round(best.confidence, 3),
+            "target": {
+                "description": description,
+                "label": point.label,
                 "pixel": [u, v],
-                "bbox": list(best.bbox),
             },
             "camera_point": [round(c, 2) for c in c_point],
             "delta_point": [round(float(x), 2) for x in d_point],

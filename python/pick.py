@@ -5,23 +5,25 @@ Takes hardware objects as parameters, yields progress events as plain dicts.
 
 Usage (standalone)::
 
-    for event in pick_sequence(robot, camera, detector, scan_gx=450):
+    for event in pick_sequence(robot, camera, pointer, "red screwdriver", scan_gx=450):
         print(event)
 
 Usage (from web controller)::
 
     def generate():
-        for event in pick_sequence(robot, camera, detector, ...):
+        for event in pick_sequence(robot, camera, pointer, description, ...):
             yield f"data: {json.dumps(event)}\\n\\n"
 """
 
 from __future__ import annotations
 
+import base64
 import logging
 import threading
 import time
 from typing import TYPE_CHECKING, Generator
 
+import cv2
 import numpy as np
 
 from coordinates import (
@@ -37,7 +39,7 @@ from coordinates import (
 if TYPE_CHECKING:
     from camera import StereoCamera
     from delta_robot import DeltaRobot
-    from object_detection import ObjectDetector
+    from object_detection import ObjectPointer
 
 log = logging.getLogger(__name__)
 
@@ -76,24 +78,25 @@ class PickSequence:
         self,
         robot: "DeltaRobot",
         camera: "StereoCamera",
-        detector: "ObjectDetector",
+        pointer: "ObjectPointer",
+        target_description: str,
         *,
         scan_gx: float = 450.0,
         approach_offset: float = 50.0,
-        detect_conf: float = 0.4,
         cancel: threading.Event | None = None,
     ) -> None:
+        if not target_description or not target_description.strip():
+            raise ValueError("target_description is required")
         self.robot = robot
         self.camera = camera
-        self.detector = detector
+        self.pointer = pointer
+        self.target_description = target_description.strip()
         self.scan_gx = scan_gx
         self.approach_offset = approach_offset
-        self.detect_conf = detect_conf
         self._cancel = cancel or threading.Event()
 
         # Populated by _scan, consumed by _approach through _lift
         self.label: str = ""
-        self.confidence: float = 0.0
         self.gantry_pick: float = 0.0
         self.pick_dx: float = 0.0
         self.pick_dy: float = 0.0
@@ -157,7 +160,9 @@ class PickSequence:
         self._check_cancel()
 
     def _scan(self) -> Generator[Event, None, None]:
-        yield self._event(2, "Scan", f"Gantry → {self.scan_gx:.0f} mm")
+        yield self._event(
+            2, "Scan", f"Gantry → {self.scan_gx:.0f} mm, target: {self.target_description!r}"
+        )
         self._cmd(lambda: self.robot.move_gantry(self.scan_gx))
         self._wait()
         time.sleep(1.0)
@@ -166,14 +171,20 @@ class PickSequence:
         if frame is None:
             raise PickError("No camera frame")
 
-        dets = self.detector.detect(frame, conf=self.detect_conf)
-        if not dets:
-            raise PickError("No objects detected")
+        point = self.pointer.point(frame, self.target_description)
+        if point is None:
+            raise PickError(f"VLM could not locate {self.target_description!r}")
 
-        best = max(dets, key=lambda d: d.confidence)
-        self.label = best.label
-        self.confidence = best.confidence
-        u, v = int(round(best.center_uv[0])), int(round(best.center_uv[1]))
+        self.label = point.label
+        u, v = int(round(point.u)), int(round(point.v))
+
+        yield {
+            "type": "point",
+            "description": self.target_description,
+            "label": self.label,
+            "pixel": [u, v],
+            "frame": _encode_annotated_frame(frame, u, v, self.label),
+        }
 
         c_point = self.camera.deproject(u, v, patch=5)
         if c_point is None:
@@ -192,7 +203,7 @@ class PickSequence:
         yield self._event(
             2,
             "Scan",
-            f"{self.label} ({self.confidence:.0%}) — "
+            f"{self.label} @ ({u}, {v}) — "
             f"world X={world_x:.0f}, gantry→{self.gantry_pick:.0f}, "
             f"delta ({self.pick_dx:.1f}, {self.pick_dy:.1f}, {self.pick_dz:.1f})",
         )
@@ -269,14 +280,58 @@ class PickSequence:
         time.sleep(0.5)
 
 
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _encode_annotated_frame(
+    frame: np.ndarray, u: int, v: int, label: str
+) -> str | None:
+    """Draw a crosshair + label on ``frame`` at ``(u, v)`` and return a data URL.
+
+    Returns ``None`` if encoding fails so the caller can degrade gracefully.
+    """
+    try:
+        annotated = frame.copy()
+        h, w = annotated.shape[:2]
+        u = int(np.clip(u, 0, w - 1))
+        v = int(np.clip(v, 0, h - 1))
+
+        color = (0, 255, 0)
+        shadow = (0, 0, 0)
+
+        cv2.line(annotated, (u - 20, v), (u + 20, v), shadow, 4)
+        cv2.line(annotated, (u, v - 20), (u, v + 20), shadow, 4)
+        cv2.line(annotated, (u - 20, v), (u + 20, v), color, 2)
+        cv2.line(annotated, (u, v - 20), (u, v + 20), color, 2)
+        cv2.circle(annotated, (u, v), 10, shadow, 4)
+        cv2.circle(annotated, (u, v), 10, color, 2)
+        cv2.circle(annotated, (u, v), 2, color, -1)
+
+        text = f"{label} ({u},{v})"
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        tx = max(5, min(u + 14, w - tw - 5))
+        ty = max(th + 5, min(v - 14, h - 5))
+        cv2.rectangle(annotated, (tx - 3, ty - th - 3), (tx + tw + 3, ty + 3), shadow, -1)
+        cv2.putText(annotated, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return None
+        return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+    except Exception:
+        log.exception("Failed to annotate VLM point frame")
+        return None
+
+
 # ── Convenience wrapper ──────────────────────────────────────────────
 
 
 def pick_sequence(
     robot: "DeltaRobot",
     camera: "StereoCamera",
-    detector: "ObjectDetector",
+    pointer: "ObjectPointer",
+    target_description: str,
     **kwargs,
 ) -> Generator[Event, None, None]:
     """Functional interface — same as ``PickSequence(...).run()``."""
-    return PickSequence(robot, camera, detector, **kwargs).run()
+    return PickSequence(robot, camera, pointer, target_description, **kwargs).run()

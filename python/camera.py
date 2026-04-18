@@ -32,7 +32,6 @@ class StereoCamera:
         capture_height: int = 720,
         fps: int = 30,
         calibration_path: Path | str = DEFAULT_CALIBRATION,
-        stereo_scale: float = 0.5,
         num_disparities: int = 192,
     ):
         self.device_index = device_index
@@ -40,7 +39,6 @@ class StereoCamera:
         self.capture_height = capture_height
         self.fps = fps
         self.calibration_path = Path(calibration_path)
-        self._stereo_scale = stereo_scale
         self._num_disparities = num_disparities
 
         self._cap: cv2.VideoCapture | None = None
@@ -61,10 +59,7 @@ class StereoCamera:
         self._stereo_matcher: cv2.StereoSGBM | None = None
 
         self._overlay_aruco = False
-        self._overlay_detections = False
         self._aruco_detector: cv2.aruco.ArucoDetector | None = None
-        self._detector = None
-        self._latest_detections: list = []
 
     @property
     def running(self) -> bool:
@@ -93,7 +88,7 @@ class StereoCamera:
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open camera at index {self.device_index}")
 
-        self._focal = abs(self._Q[2, 3]) * self._stereo_scale
+        self._focal = abs(self._Q[2, 3])
         self._baseline = abs(1.0 / self._Q[3, 2])
 
         block = 5
@@ -127,17 +122,12 @@ class StereoCamera:
             self._cap = None
         log.info("Camera stopped")
 
-    def set_overlay(self, *, aruco: bool = False, detections: bool = False) -> None:
+    def set_overlay(self, *, aruco: bool = False) -> None:
         self._overlay_aruco = aruco
-        self._overlay_detections = detections
         if aruco and self._aruco_detector is None:
             aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
             params = cv2.aruco.DetectorParameters()
             self._aruco_detector = cv2.aruco.ArucoDetector(aruco_dict, params)
-        if detections and self._detector is None:
-            from object_detection import ObjectDetector
-
-            self._detector = ObjectDetector()
 
     def _draw_aruco_overlay(self, img: np.ndarray) -> np.ndarray:
         if self._aruco_detector is None:
@@ -160,22 +150,6 @@ class StereoCamera:
                 2,
             )
             cv2.drawMarker(img, (cx, cy), (0, 255, 0), cv2.MARKER_CROSS, 10, 1)
-        return img
-
-    def _draw_detection_overlay(self, img: np.ndarray) -> np.ndarray:
-        if self._detector is None:
-            return img
-        dets = self._detector.detect(img)
-        self._latest_detections = dets
-        for det in dets:
-            x1, y1, x2, y2 = det.bbox
-            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            cx, cy = int(det.center_uv[0]), int(det.center_uv[1])
-            cv2.drawMarker(img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 12, 2)
-            text = f"{det.label} {det.confidence:.0%}"
-            cv2.putText(
-                img, text, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1
-            )
         return img
 
     def _loop(self) -> None:
@@ -201,15 +175,8 @@ class StereoCamera:
                 left_rect = cv2.remap(left_raw, map_l1, map_l2, cv2.INTER_LINEAR)
                 right_rect = cv2.remap(right_raw, map_r1, map_r2, cv2.INTER_LINEAR)
 
-                s = self._stereo_scale
-                if s != 1.0:
-                    left_sm = cv2.resize(left_rect, None, fx=s, fy=s)
-                    right_sm = cv2.resize(right_rect, None, fx=s, fy=s)
-                else:
-                    left_sm, right_sm = left_rect, right_rect
-
-                left_gray = cv2.cvtColor(left_sm, cv2.COLOR_BGR2GRAY)
-                right_gray = cv2.cvtColor(right_sm, cv2.COLOR_BGR2GRAY)
+                left_gray = cv2.cvtColor(left_rect, cv2.COLOR_BGR2GRAY)
+                right_gray = cv2.cvtColor(right_rect, cv2.COLOR_BGR2GRAY)
                 disparity = (
                     matcher.compute(left_gray, right_gray).astype(np.float32) / 16.0
                 )
@@ -217,8 +184,6 @@ class StereoCamera:
                 display = left_rect.copy()
                 if self._overlay_aruco:
                     self._draw_aruco_overlay(display)
-                if self._overlay_detections:
-                    self._draw_detection_overlay(display)
 
                 _, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 with self._lock:
@@ -273,32 +238,98 @@ class StereoCamera:
             )
         return results
 
+    def get_pointcloud_ply(
+        self,
+        *,
+        z_min_mm: float = 100.0,
+        z_max_mm: float = 1500.0,
+        stride: int = 1,
+    ) -> bytes | None:
+        """Serialize the current frame as a binary PLY point cloud.
+
+        Points are in the rectified left-camera frame in millimetres; colors
+        come from the rectified left image. ``stride`` decimates the cloud
+        (e.g. ``stride=2`` keeps one pixel in four) to keep transfers small.
+        Returns ``None`` if no valid frame has been captured yet.
+        """
+        with self._lock:
+            if (
+                self._disparity is None
+                or self._color_frame is None
+                or self._Q is None
+            ):
+                return None
+            disp = self._disparity.copy()
+            color = self._color_frame.copy()
+            Q = self._Q.copy()
+
+        if stride < 1:
+            stride = 1
+        if stride > 1:
+            disp = disp[::stride, ::stride]
+            color = color[::stride, ::stride]
+
+        points_m = cv2.reprojectImageTo3D(disp, Q)
+        points_mm = points_m * 1000.0
+        z = points_mm[..., 2]
+        mask = (disp > 0) & np.isfinite(z) & (z > z_min_mm) & (z < z_max_mm)
+
+        pts = points_mm[mask].astype(np.float32)
+        # PLY wants RGB, color_frame is BGR.
+        rgb = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)[mask].astype(np.uint8)
+
+        n = pts.shape[0]
+        header = (
+            "ply\n"
+            "format binary_little_endian 1.0\n"
+            f"element vertex {n}\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "property uchar red\n"
+            "property uchar green\n"
+            "property uchar blue\n"
+            "end_header\n"
+        ).encode("ascii")
+
+        # Pack as an interleaved struct: 3xfloat32 + 3xuint8 per vertex.
+        vertex_dtype = np.dtype(
+            [("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
+             ("r", "u1"), ("g", "u1"), ("b", "u1")]
+        )
+        vertices = np.empty(n, dtype=vertex_dtype)
+        vertices["x"] = pts[:, 0]
+        vertices["y"] = pts[:, 1]
+        vertices["z"] = pts[:, 2]
+        vertices["r"] = rgb[:, 0]
+        vertices["g"] = rgb[:, 1]
+        vertices["b"] = rgb[:, 2]
+
+        return header + vertices.tobytes()
+
     def deproject(
         self, u: int, v: int, *, patch: int = 0
     ) -> tuple[float, float, float] | None:
         """Pixel (u, v) in the rectified left image -> 3D point in camera frame (mm).
 
-        Stereo matching runs at ``_stereo_scale`` resolution (default 0.5).
-        Depth is computed as ``focal * baseline / disp`` matching depth_preview.py.
-        The Q matrix is used only for X/Y reprojection.
+        Stereo matching runs at full image resolution.  Depth is computed as
+        ``focal * baseline / disp`` matching depth_preview.py. The Q matrix
+        is used only for X/Y reprojection.
         """
         with self._lock:
             if self._disparity is None or self._Q is None:
                 return None
-            s = self._stereo_scale
-            us, vs = int(round(u * s)), int(round(v * s))
             h, w = self._disparity.shape
-            if not (0 <= vs < h and 0 <= us < w):
+            if not (0 <= v < h and 0 <= u < w):
                 return None
             if patch > 0:
-                ps = max(1, int(round(patch * s)))
-                v0, v1 = max(0, vs - ps), min(h, vs + ps + 1)
-                u0, u1 = max(0, us - ps), min(w, us + ps + 1)
+                v0, v1 = max(0, v - patch), min(h, v + patch + 1)
+                u0, u1 = max(0, u - patch), min(w, u + patch + 1)
                 region = self._disparity[v0:v1, u0:u1]
                 valid = region[region > 0]
                 disp = float(np.median(valid)) if len(valid) > 0 else 0.0
             else:
-                disp = float(self._disparity[vs, us])
+                disp = float(self._disparity[v, u])
             focal = self._focal
             baseline = self._baseline
             Q = self._Q
@@ -309,7 +340,6 @@ class StereoCamera:
         Z_mm = focal * baseline / disp * 1000.0
         cx = Q[0, 3]
         cy = Q[1, 3]
-        focal_full = abs(Q[2, 3])
-        X_mm = (u + cx) / focal_full * Z_mm
-        Y_mm = (v + cy) / focal_full * Z_mm
+        X_mm = (u + cx) / focal * Z_mm
+        Y_mm = (v + cy) / focal * Z_mm
         return (X_mm, Y_mm, Z_mm)

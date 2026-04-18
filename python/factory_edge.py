@@ -20,11 +20,15 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any
 
 import paho.mqtt.client as mqtt
 import requests
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+load_dotenv(Path(__file__).parent / ".env")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -217,15 +221,16 @@ def do_home() -> bool:
     return _post("/api/full_home").get("ok", False)
 
 
-def do_scan_and_pick(scan_x: float) -> str:
+def do_scan_and_pick(scan_x: float, description: str) -> str:
     """Run the pick sequence via the SSE test/pick endpoint.
 
+    ``description`` is the natural-language target handed to the VLM.
     Returns 'object_found', 'no_object', or 'fault'.
     """
     try:
         with requests.get(
             f"{PICKER_BASE}/api/pick",
-            params={"gantry_x": scan_x},
+            params={"gantry_x": scan_x, "description": description},
             stream=True,
             timeout=120,
         ) as resp:
@@ -316,6 +321,12 @@ def main():
     def run_pick_cycle():
         nonlocal retries
         scan_x = task_params.get("scan_x", 450.0)
+        description = task_params.get("description")
+        if not description:
+            log.error("task_received missing 'description' param")
+            sm.send("fault")
+            publish_error("missing_description", "task_received requires a 'description' param")
+            return
 
         try:
             sm.send("task_received")
@@ -324,7 +335,7 @@ def main():
             return
 
         while sm.state == S.SCANNING:
-            outcome = do_scan_and_pick(scan_x)
+            outcome = do_scan_and_pick(scan_x, description)
             if outcome == "object_found":
                 sm.send("object_found")
                 if do_drop():
@@ -342,7 +353,8 @@ def main():
             elif outcome == "fault":
                 sm.send("fault")
                 publish_error(
-                    "pick_sequence_failed", f"Fault during pick at scan_x={scan_x}"
+                    "pick_sequence_failed",
+                    f"Fault during pick at scan_x={scan_x}, target={description!r}",
                 )
                 break
 

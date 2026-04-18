@@ -120,37 +120,6 @@ class HomePosition:
 
 
 
-# ── Tray regions (world-frame, mm) ────────────────────────────────────────
-#
-# Each tray is an axis-aligned rectangle in world-frame XY (mm).
-#   world_x = gantry_x + delta_x   (gantry only moves along X)
-#   world_y = delta_y
-#
-# Layout: 2 rows x 3 columns.  Placeholder values — measure from the
-# actual setup by jogging the TCP to tray corners.
-
-
-@dataclass
-class TrayRegion:
-    x_min: float
-    x_max: float
-    y_min: float
-    y_max: float
-
-    def contains(self, world_x: float, world_y: float) -> bool:
-        return self.x_min <= world_x <= self.x_max and self.y_min <= world_y <= self.y_max
-
-
-TRAY_REGIONS: dict[int, TrayRegion] = {
-    1: TrayRegion(x_min=0.0, x_max=100.0, y_min=50.0, y_max=150.0),     # top-left
-    2: TrayRegion(x_min=110.0, x_max=210.0, y_min=50.0, y_max=150.0),    # top-center
-    3: TrayRegion(x_min=220.0, x_max=320.0, y_min=50.0, y_max=150.0),    # top-right
-    4: TrayRegion(x_min=0.0, x_max=100.0, y_min=-150.0, y_max=-50.0),    # bottom-left
-    5: TrayRegion(x_min=110.0, x_max=210.0, y_min=-150.0, y_max=-50.0),  # bottom-center
-    6: TrayRegion(x_min=220.0, x_max=320.0, y_min=-150.0, y_max=-50.0),  # bottom-right
-}
-
-
 # ── Camera-to-robot transform ─────────────────────────────────────────────
 
 CALIBRATION_FILE = Path(__file__).parent / "calibration" / "extrinsic" / "camera_transform.json"
