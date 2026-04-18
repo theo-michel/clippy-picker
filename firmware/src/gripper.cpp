@@ -5,6 +5,18 @@ static SMS_STS st;
 
 Gripper gripper;
 
+bool Gripper::_probe() {
+    if (st.Ping(STS_ID) != -1) {
+        if (!_connected) st.EnableTorque(STS_ID, 1);
+        _connected = true;
+    }
+    return _connected;
+}
+
+bool Gripper::isConnected() {
+    return _connected || _probe();
+}
+
 bool Gripper::init() {
     Serial2.begin(STS_BAUD, SERIAL_8N1, STS_RX_PIN, STS_TX_PIN);
     st.pSerial = &Serial2;
@@ -12,13 +24,8 @@ bool Gripper::init() {
 
     for (int attempt = 0; attempt < 5; attempt++) {
         delay(200);
-        if (st.Ping(STS_ID) != -1) {
-            _connected = true;
-            st.EnableTorque(STS_ID, 1);
-            return true;
-        }
+        if (_probe()) return true;
     }
-    _connected = false;
     return false;
 }
 

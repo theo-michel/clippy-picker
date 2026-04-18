@@ -406,6 +406,7 @@
     <button class="btn btn-primary btn-sm" onclick="openHomingWizard()">Homing Wizard</button>
     <button class="btn btn-sm" onclick="openCalibSidebar()">Calibrate</button>
     <button class="btn btn-sm" onclick="openPickTest()">Pick Test</button>
+    <button class="btn btn-sm" onclick="openDebugTransform()">Debug Transform</button>
       <span class="logo">PICKER</span>
     <div style="width:6px;"></div>
       <div class="status-dot" id="statusDot"></div>
@@ -1060,7 +1061,7 @@ function runPickTest() {
   $('btnPickRun').disabled = true;
   $('btnPickCancel').style.display = '';
 
-  pickES = new EventSource(`/api/test/pick?gantry_x=${gx}&approach_offset=${ao}`);
+  pickES = new EventSource(`/api/pick?gantry_x=${gx}&approach_offset=${ao}`);
   pickES.onmessage = (e) => {
     const d = JSON.parse(e.data);
     if (d.type === 'step') {
@@ -1087,7 +1088,281 @@ function pickDone() {
 }
 
 function cancelPickTest() {
-  fetch('/api/test/pick/cancel', { method: 'POST' });
+  fetch('/api/pick/cancel', { method: 'POST' });
+}
+</script>
+
+<!-- ── Debug Transform Modal ──────────────────────────────────── -->
+<style>
+.debug-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.debug-canvas-wrap {
+  position: relative; background: #fff; border: 1px solid var(--border-subtle);
+  border-radius: 8px; overflow: hidden; aspect-ratio: 1;
+}
+.debug-canvas-wrap canvas { width: 100%; height: 100%; display: block; }
+.debug-canvas-label {
+  position: absolute; top: 6px; left: 8px;
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-dim); pointer-events: none;
+}
+.debug-legend {
+  display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0;
+  font-size: .72rem; color: var(--text-dim);
+}
+.debug-legend-item { display: flex; align-items: center; gap: 4px; }
+.debug-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.debug-num-grid {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
+  font-family: var(--mono); font-size: .72rem; line-height: 1.6;
+}
+.debug-num-label { color: var(--text-dim); text-align: right; }
+.debug-rmsd-bar {
+  height: 6px; border-radius: 3px; background: var(--border); overflow: hidden;
+}
+.debug-rmsd-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+</style>
+
+<div class="modal-overlay" id="debugTransformOverlay" onclick="if(event.target===this)closeDebugTransform()">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-header">
+      <span class="modal-title">Debug Transform</span>
+      <button class="modal-close" onclick="closeDebugTransform()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:.78rem;font-weight:600;color:var(--text-dim);">Scan gantry</label>
+        <input id="debugGantryX" type="number" value="450" min="0" max="625" step="10" class="gantry-input">
+        <span class="gantry-unit">mm</span>
+        <button class="btn btn-primary btn-sm" id="btnDebugRun" onclick="runDebugTransform()">Capture</button>
+      </div>
+
+      <div class="debug-grid">
+        <div class="debug-canvas-wrap">
+          <canvas id="debugCanvasXY"></canvas>
+          <span class="debug-canvas-label">Top-down (X / Y)</span>
+        </div>
+        <div class="debug-canvas-wrap">
+          <canvas id="debugCanvasXZ"></canvas>
+          <span class="debug-canvas-label">Side (X / Z)</span>
+        </div>
+      </div>
+
+      <div class="debug-legend">
+        <span class="debug-legend-item"><span class="debug-swatch" style="background:#16a34a;"></span>Calib ground truth (FK)</span>
+        <span class="debug-legend-item"><span class="debug-swatch" style="background:#dc2626;"></span>Calib camera (R*c+t)</span>
+        <span class="debug-legend-item"><span class="debug-swatch" style="background:#2563eb;border-radius:50%;"></span>Detection (camera)</span>
+        <span class="debug-legend-item"><span class="debug-swatch" style="background:#f97316;border-radius:50%;"></span>TCP target</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <div style="font-size:.74rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Transform chain</div>
+          <div class="debug-num-grid" id="debugNumbers">
+            <span class="debug-num-label">Pixel</span><span id="dbgPixel">—</span>
+            <span class="debug-num-label">Camera 3D</span><span id="dbgCam3d">—</span>
+            <span class="debug-num-label">Delta 3D (R*c+t)</span><span id="dbgDelta3d">—</span>
+            <span class="debug-num-label">World X</span><span id="dbgWorldX">—</span>
+            <span class="debug-num-label">Gantry target</span><span id="dbgGantry">—</span>
+            <span class="debug-num-label">TCP target</span><span id="dbgTcp">—</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:.74rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Calibration quality</div>
+          <div class="debug-num-grid" id="debugCalib">
+            <span class="debug-num-label">RMSD</span><span id="dbgRmsd">—</span>
+            <span class="debug-num-label">Points</span><span id="dbgPts">—</span>
+            <span class="debug-num-label">Inliers</span><span id="dbgInl">—</span>
+            <span class="debug-num-label">Max residual</span><span id="dbgMaxRes">—</span>
+          </div>
+          <div style="margin-top:6px;">
+            <div class="debug-rmsd-bar"><div class="debug-rmsd-fill" id="dbgRmsdBar"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--text-dim);margin-top:2px;">
+              <span>0 mm</span><span>good &lt; 5</span><span>50 mm</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="debugMsg" style="font-size:.78rem;color:var(--text-dim);min-height:1.2em;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openDebugTransform() {
+  $('debugTransformOverlay').classList.add('open');
+}
+function closeDebugTransform() {
+  $('debugTransformOverlay').classList.remove('open');
+}
+
+let _debugData = null;
+
+async function runDebugTransform() {
+  const gx = parseFloat($('debugGantryX').value) || 450;
+  $('btnDebugRun').disabled = true;
+  $('debugMsg').textContent = 'Capturing…';
+  $('debugMsg').style.color = 'var(--text-dim)';
+  try {
+    const r = await apiGet(`/api/debug/pick_transform?gantry_x=${gx}`);
+    if (!r.ok) { $('debugMsg').textContent = r.message || 'Error'; $('debugMsg').style.color = 'var(--red)'; return; }
+    _debugData = r;
+    renderDebugNumbers(r);
+    renderDebugCanvas(r);
+    $('debugMsg').textContent = `${r.detection.label} (${(r.detection.confidence*100).toFixed(0)}%)`;
+    $('debugMsg').style.color = 'var(--green)';
+  } catch (e) {
+    $('debugMsg').textContent = String(e);
+    $('debugMsg').style.color = 'var(--red)';
+  } finally {
+    $('btnDebugRun').disabled = false;
+  }
+}
+
+function renderDebugNumbers(d) {
+  const fmt = a => `(${a.map(v => v.toFixed(1)).join(', ')})`;
+  $('dbgPixel').textContent = `(${d.detection.pixel[0]}, ${d.detection.pixel[1]})`;
+  $('dbgCam3d').textContent = fmt(d.camera_point);
+  $('dbgDelta3d').textContent = fmt(d.delta_point);
+  $('dbgWorldX').textContent = `${d.world_x.toFixed(1)} mm  (gantry ${d.gantry_scan.toFixed(0)} + dx ${d.delta_point[0].toFixed(1)})`;
+  $('dbgGantry').textContent = `${d.gantry_pick.toFixed(1)} mm`;
+  $('dbgTcp').textContent = fmt(d.tcp_target);
+
+  const cal = d.calibration;
+  if (cal.rmsd != null) {
+    $('dbgRmsd').innerHTML = `<span style="color:${cal.rmsd < 5 ? 'var(--green)' : cal.rmsd < 15 ? 'var(--orange)' : 'var(--red)'};font-weight:700;">${cal.rmsd.toFixed(2)} mm</span>`;
+    $('dbgPts').textContent = cal.num_points ?? '—';
+    $('dbgInl').textContent = cal.num_inliers ?? '—';
+    const maxR = cal.residuals ? Math.max(...cal.residuals) : 0;
+    $('dbgMaxRes').textContent = `${maxR.toFixed(1)} mm`;
+    const pct = Math.min(100, (cal.rmsd / 50) * 100);
+    const bar = $('dbgRmsdBar');
+    bar.style.width = pct + '%';
+    bar.style.background = cal.rmsd < 5 ? 'var(--green)' : cal.rmsd < 15 ? 'var(--orange)' : 'var(--red)';
+  }
+}
+
+function renderDebugCanvas(d) {
+  drawDebugView('debugCanvasXY', d, 0, 1, 'X', 'Y');
+  drawDebugView('debugCanvasXZ', d, 0, 2, 'X', 'Z');
+}
+
+function drawDebugView(canvasId, d, ai, bi, aLabel, bLabel) {
+  const canvas = $(canvasId);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Gather all points for auto-scaling
+  const allA = [], allB = [];
+  function addPt(a, b) { allA.push(a); allB.push(b); }
+
+  addPt(d.delta_point[ai], d.delta_point[bi]);
+  addPt(d.tcp_target[ai], d.tcp_target[bi]);
+  for (const p of d.calibration_overlay) {
+    addPt(p.delta_gt[ai], p.delta_gt[bi]);
+    addPt(p.camera_transformed[ai], p.camera_transformed[bi]);
+  }
+
+  if (allA.length === 0) return;
+  const margin = 40;
+  const minA = Math.min(...allA), maxA = Math.max(...allA);
+  const minB = Math.min(...allB), maxB = Math.max(...allB);
+  const padA = Math.max(30, (maxA - minA) * 0.15);
+  const padB = Math.max(30, (maxB - minB) * 0.15);
+  const rangeA = (maxA - minA) + 2 * padA || 100;
+  const rangeB = (maxB - minB) + 2 * padB || 100;
+  const cA = (minA + maxA) / 2, cB = (minB + maxB) / 2;
+  const scale = Math.min((W - 2 * margin) / rangeA, (H - 2 * margin) / rangeB);
+
+  function toCanvas(a, b) {
+    return {
+      x: W / 2 + (a - cA) * scale,
+      y: H / 2 - (b - cB) * scale,
+    };
+  }
+
+  // Background
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  const gridStep = Math.pow(10, Math.floor(Math.log10(rangeA / 4)));
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  ctx.lineWidth = 1;
+  const gMinA = Math.floor((cA - rangeA / 2) / gridStep) * gridStep;
+  const gMaxA = Math.ceil((cA + rangeA / 2) / gridStep) * gridStep;
+  const gMinB = Math.floor((cB - rangeB / 2) / gridStep) * gridStep;
+  const gMaxB = Math.ceil((cB + rangeB / 2) / gridStep) * gridStep;
+  ctx.font = '9px system-ui,sans-serif';
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  for (let a = gMinA; a <= gMaxA; a += gridStep) {
+    const p = toCanvas(a, cB);
+    ctx.beginPath(); ctx.moveTo(p.x, margin); ctx.lineTo(p.x, H - margin); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillText(a.toFixed(0), p.x, H - margin + 12);
+  }
+  for (let b = gMinB; b <= gMaxB; b += gridStep) {
+    const p = toCanvas(cA, b);
+    ctx.beginPath(); ctx.moveTo(margin, p.y); ctx.lineTo(W - margin, p.y); ctx.stroke();
+    ctx.textAlign = 'right'; ctx.fillText(b.toFixed(0), margin - 4, p.y + 3);
+  }
+
+  // Axis labels
+  ctx.font = 'bold 11px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#dc2626'; ctx.fillText(aLabel, W / 2, H - 4);
+  ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = bi === 1 ? '#16a34a' : '#2563eb'; ctx.fillText(bLabel, 0, 0); ctx.restore();
+
+  // Calibration residual lines + points
+  for (const p of d.calibration_overlay) {
+    const gt = toCanvas(p.delta_gt[ai], p.delta_gt[bi]);
+    const ct = toCanvas(p.camera_transformed[ai], p.camera_transformed[bi]);
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gt.x, gt.y); ctx.lineTo(ct.x, ct.y); ctx.stroke();
+
+    ctx.fillStyle = '#16a34a';
+    ctx.beginPath(); ctx.arc(gt.x, gt.y, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath(); ctx.arc(ct.x, ct.y, 4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Detection point (camera → delta)
+  const det = toCanvas(d.delta_point[ai], d.delta_point[bi]);
+  ctx.fillStyle = 'rgba(37,99,235,0.15)';
+  ctx.beginPath(); ctx.arc(det.x, det.y, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2563eb';
+  ctx.beginPath(); ctx.arc(det.x, det.y, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(det.x, det.y, 2, 0, Math.PI * 2); ctx.fill();
+
+  // TCP target
+  const tcp = toCanvas(d.tcp_target[ai], d.tcp_target[bi]);
+  ctx.save();
+  ctx.translate(tcp.x, tcp.y); ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = '#f97316';
+  ctx.fillRect(-5, -5, 10, 10);
+  ctx.restore();
+
+  // Line from detection to TCP
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = 'rgba(249,115,22,0.5)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(det.x, det.y); ctx.lineTo(tcp.x, tcp.y); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#2563eb'; ctx.fillText('cam→delta', det.x + 10, det.y - 4);
+  ctx.fillStyle = '#f97316'; ctx.fillText('TCP', tcp.x + 8, tcp.y - 4);
+
+  // Origin crosshair
+  const origin = toCanvas(0, 0);
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(origin.x - 8, origin.y); ctx.lineTo(origin.x + 8, origin.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(origin.x, origin.y - 8); ctx.lineTo(origin.x, origin.y + 8); ctx.stroke();
 }
 </script>
 

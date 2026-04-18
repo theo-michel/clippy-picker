@@ -27,7 +27,7 @@ class StereoCamera:
 
     def __init__(
         self,
-        device_index: int = 2,
+        device_index: int = 0,
         capture_width: int = 2560,
         capture_height: int = 720,
         fps: int = 30,
@@ -83,21 +83,6 @@ class StereoCamera:
         self._Q = data["Q"]
         log.info("Loaded stereo calibration from %s", self.calibration_path)
 
-    def _find_stereo_index(self) -> int:
-        """Scan indices 0-9 for a side-by-side stereo feed (aspect > 2:1)."""
-        for idx in range(10):
-            cap = cv2.VideoCapture(idx)
-            if not cap.isOpened():
-                continue
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.capture_width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.capture_height)
-            ret, frame = cap.read()
-            cap.release()
-            if ret and frame is not None and frame.shape[1] / frame.shape[0] > 2.0:
-                log.info("Stereo camera auto-detected at index %d", idx)
-                return idx
-        return -1
-
     def start(self) -> None:
         if self._running:
             return
@@ -105,15 +90,6 @@ class StereoCamera:
         cap = cv2.VideoCapture(self.device_index)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.capture_width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.capture_height)
-        if not cap.isOpened() or cap.get(cv2.CAP_PROP_FRAME_WIDTH) / max(cap.get(cv2.CAP_PROP_FRAME_HEIGHT), 1) < 2.0:
-            cap.release()
-            idx = self._find_stereo_index()
-            if idx < 0:
-                raise RuntimeError("No stereo camera found on any index (0-9)")
-            self.device_index = idx
-            cap = cv2.VideoCapture(idx)
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.capture_width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.capture_height)
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open camera at index {self.device_index}")
 
@@ -334,6 +310,6 @@ class StereoCamera:
         cx = Q[0, 3]
         cy = Q[1, 3]
         focal_full = abs(Q[2, 3])
-        X_mm = (u - cx) / focal_full * (Z_mm / 1000.0) * 1000.0
-        Y_mm = (v - cy) / focal_full * (Z_mm / 1000.0) * 1000.0
+        X_mm = (u + cx) / focal_full * Z_mm
+        Y_mm = (v + cy) / focal_full * Z_mm
         return (X_mm, Y_mm, Z_mm)

@@ -887,7 +887,9 @@ def api_calibration_auto():
                 img_w = camera.capture_width // 2
                 img_h = camera.capture_height
                 max_r = 0.45 * min(img_w, img_h)
-                dist_from_center = ((cu - img_w / 2) ** 2 + (cv - img_h / 2) ** 2) ** 0.5
+                dist_from_center = (
+                    (cu - img_w / 2) ** 2 + (cv - img_h / 2) ** 2
+                ) ** 0.5
                 if dist_from_center > max_r:
                     yield f"data: {json.dumps({'type': 'skip', 'index': i, 'message': f'Marker too far from center ({dist_from_center:.0f}px)'})}\n\n"
                     continue
@@ -962,14 +964,20 @@ def _detections_to_world(detections_raw, cam):
         world_x = gantry_x + d_point[0]
         world_y = float(d_point[1])
         world_z = float(d_point[2])
-        results.append({
-            "pixel": [det.center_uv[0], det.center_uv[1]],
-            "bbox": list(det.bbox),
-            "label": det.label,
-            "confidence": round(det.confidence, 3),
-            "delta": [round(float(d_point[0]), 2), round(float(d_point[1]), 2), round(float(d_point[2]), 2)],
-            "world": [round(world_x, 2), round(world_y, 2), round(world_z, 2)],
-        })
+        results.append(
+            {
+                "pixel": [det.center_uv[0], det.center_uv[1]],
+                "bbox": list(det.bbox),
+                "label": det.label,
+                "confidence": round(det.confidence, 3),
+                "delta": [
+                    round(float(d_point[0]), 2),
+                    round(float(d_point[1]), 2),
+                    round(float(d_point[2]), 2),
+                ],
+                "world": [round(world_x, 2), round(world_y, 2), round(world_z, 2)],
+            }
+        )
     return results
 
 
@@ -1000,9 +1008,13 @@ def api_detect_scan():
         region = TRAY_REGIONS.get(tray)
         if region is None:
             return jsonify({"ok": False, "message": f"Unknown tray {tray}"}), 400
-        world_dets = [d for d in world_dets if region.contains(d["world"][0], d["world"][1])]
+        world_dets = [
+            d for d in world_dets if region.contains(d["world"][0], d["world"][1])
+        ]
 
-    return jsonify({"ok": True, "tray": tray, "detections": world_dets, "count": len(world_dets)})
+    return jsonify(
+        {"ok": True, "tray": tray, "detections": world_dets, "count": len(world_dets)}
+    )
 
 
 @app.route("/api/detect/pick", methods=["POST"])
@@ -1039,14 +1051,26 @@ def api_detect_pick():
     world_dets = _detections_to_world(raw, camera)
 
     # Filter to tray
-    world_dets = [d for d in world_dets if region.contains(d["world"][0], d["world"][1])]
+    world_dets = [
+        d for d in world_dets if region.contains(d["world"][0], d["world"][1])
+    ]
 
     # Optional class filter
     if class_name:
         world_dets = [d for d in world_dets if d["label"] == class_name]
 
     if not world_dets:
-        return jsonify({"ok": False, "message": "No detections in tray", "tray": tray, "count": 0}), 404
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "No detections in tray",
+                    "tray": tray,
+                    "count": 0,
+                }
+            ),
+            404,
+        )
 
     chosen = random.choice(world_dets)
     world_x, world_y, world_z = chosen["world"]
@@ -1061,19 +1085,23 @@ def api_detect_pick():
         if robot is None:
             return jsonify({"ok": False, "message": "Robot not connected"}), 400
         try:
-            robot.move_to_position_tcp_and_wait(gantry_target, delta_x, delta_y, delta_z)
+            robot.move_to_position_tcp_and_wait(
+                gantry_target, delta_x, delta_y, delta_z
+            )
         except (DeltaRobotError, ValueError) as e:
             return jsonify({"ok": False, "message": str(e), "detection": chosen}), 400
 
-    return jsonify({
-        "ok": True,
-        "tray": tray,
-        "detection": chosen,
-        "motion": {
-            "gantry_x": round(gantry_target, 2),
-            "delta": [round(delta_x, 2), round(delta_y, 2), round(delta_z, 2)],
-        },
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "tray": tray,
+            "detection": chosen,
+            "motion": {
+                "gantry_x": round(gantry_target, 2),
+                "delta": [round(delta_x, 2), round(delta_y, 2), round(delta_z, 2)],
+            },
+        }
+    )
 
 
 # ====================================================================== #
@@ -1081,177 +1109,140 @@ def api_detect_pick():
 # ====================================================================== #
 
 
-@app.route("/api/test/pick")
-def api_test_pick():
-    """Run a pick-and-return test sequence.  Streams SSE progress events."""
+@app.route("/api/pick")
+def api_pick():
+    """Run a pick-and-return sequence.  Streams SSE progress events."""
+    from pick import pick_sequence
+
     scan_gx = float(request.args.get("gantry_x", 450))
     approach_offset = float(request.args.get("approach_offset", 50))
 
-    def _wait(timeout: float = 30.0) -> bool:
-        deadline = time.time() + timeout
-        time.sleep(0.3)
-        while time.time() < deadline:
-            if not robot.is_moving():
-                return True
-            time.sleep(0.2)
-        return False
+    with robot_lock:
+        if robot is None:
+            return jsonify({"ok": False, "message": "Robot not connected"}), 400
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Start the camera first"}), 400
 
-    def _evt(tp: str, **kw) -> str:
-        return f"data: {json.dumps({'type': tp, **kw})}\n\n"
-
-    def _cmd(fn) -> str | None:
-        """Run *fn* under robot_lock.  Returns error string or None."""
-        with robot_lock:
-            if robot is None:
-                return "Robot disconnected"
-            try:
-                fn()
-                return None
-            except Exception as e:
-                return str(e)
+    pick_test_cancel.clear()
 
     def generate():
-        pick_test_cancel.clear()
-        from coordinates import (
-            DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3,
-            GANTRY_X_MIN, GANTRY_X_MAX,
-            camera_to_robot,
-        )
-        home_angles = (DELTA_HOME_ANGLE_1, DELTA_HOME_ANGLE_2, DELTA_HOME_ANGLE_3)
-        N = 8
-
-        def step(i, name, detail=""):
-            return _evt("step", step=name, detail=detail, index=i, total=N)
-
-        with robot_lock:
-            if robot is None:
-                yield _evt("error", message="Robot not connected"); return
-        with camera_lock:
-            if not camera or not camera.running:
-                yield _evt("error", message="Start the camera first"); return
-
-        # 1 — Prepare
-        yield step(1, "Prepare", "Gripper open, delta → home")
-        err = _cmd(lambda: robot.grip_open())
-        if err: yield _evt("error", message=err); return
-        err = _cmd(lambda: robot.move_delta(*home_angles))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
-
-        # 2 — Scan
-        yield step(2, "Scan", f"Gantry → {scan_gx:.0f} mm")
-        err = _cmd(lambda: robot.move_gantry(scan_gx))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        time.sleep(1.0)
-
-        with camera_lock:
-            frame = camera.get_color_frame() if camera and camera.running else None
-        if frame is None:
-            yield _evt("error", message="No camera frame"); return
-
-        dets = detector.detect(frame, conf=0.4)
-        if not dets:
-            yield _evt("error", message="No objects detected"); return
-
-        best = max(dets, key=lambda d: d.confidence)
-        u, v = int(round(best.center_uv[0])), int(round(best.center_uv[1]))
-        with camera_lock:
-            c_point = camera.deproject(u, v, patch=5) if camera else None
-        if c_point is None:
-            yield _evt("error", message=f"No depth at pixel ({u}, {v})"); return
-
-        d_pt = camera_to_robot(np.array(c_point))
-        dx, dy, dz = float(d_pt[0]), float(d_pt[1]), float(d_pt[2])
-
-        # Convert to world X, then split into gantry + small delta offset
-        world_x = scan_gx + dx
-        gantry_pick = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
-        pick_dx = world_x - gantry_pick
-        pick_dy = dy
-        pick_dz = dz
-        hover_z = pick_dz - approach_offset
-
-        yield step(2, "Scan",
-                   f"{best.label} ({best.confidence:.0%}) — "
-                   f"world X={world_x:.0f}, gantry→{gantry_pick:.0f}, "
-                   f"delta ({pick_dx:.1f}, {pick_dy:.1f}, {pick_dz:.1f})")
-
-        # Pre-check reachability at both hover and pick depth
-        from coordinates import TCP_OFFSET_FROM_EE
-        for label, z in [("hover", hover_z), ("pick", pick_dz)]:
-            ee = (pick_dx - TCP_OFFSET_FROM_EE[0],
-                  pick_dy - TCP_OFFSET_FROM_EE[1],
-                  z - TCP_OFFSET_FROM_EE[2])
-            try:
-                a1, a2, a3 = robot.ik.inverse(*ee)
-                if not all(-21.8 <= a <= 80.0 for a in (a1, a2, a3)):
-                    raise ValueError(f"angles ({a1:.1f}, {a2:.1f}, {a3:.1f}) outside limits")
-            except (ValueError, Exception) as e:
-                yield _evt("error",
-                           message=f"Target unreachable at {label} Z={z:.1f}: {e}")
-                return
-
-        time.sleep(0.5)
-        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
-
-        # 3 — Position gantry above object, delta to hover height
-        yield step(3, "Approach",
-                   f"Gantry → {gantry_pick:.0f}, TCP → ({pick_dx:.1f}, {pick_dy:.1f}, {hover_z:.1f})")
-        err = _cmd(lambda: robot.move_gantry(gantry_pick))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        err = _cmd(lambda: robot.move_tcp(pick_dx, pick_dy, hover_z))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
-
-        # 4 — Descend (only Z changes — smooth vertical drop)
-        yield step(4, "Descend", f"TCP → ({pick_dx:.1f}, {pick_dy:.1f}, {pick_dz:.1f})")
-        err = _cmd(lambda: robot.move_tcp(pick_dx, pick_dy, pick_dz))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        time.sleep(0.3)
-
-        # 5 — Grab
-        yield step(5, "Grab", "Closing gripper")
-        err = _cmd(lambda: robot.grip_close())
-        if err: yield _evt("error", message=err); return
-        time.sleep(0.5)
-        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
-
-        # 6 — Lift (straight up to hover height)
-        yield step(6, "Lift", f"TCP → ({pick_dx:.1f}, {pick_dy:.1f}, {hover_z:.1f})")
-        err = _cmd(lambda: robot.move_tcp(pick_dx, pick_dy, hover_z))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        if pick_test_cancel.is_set(): yield _evt("cancelled"); return
-
-        # 7 — Return home
-        yield step(7, "Return home", "Delta → home, gantry → 0")
-        err = _cmd(lambda: robot.move_delta(*home_angles))
-        if err: yield _evt("error", message=err); return
-        _wait()
-        err = _cmd(lambda: robot.move_gantry(0.0))
-        if err: yield _evt("error", message=err); return
-        _wait()
-
-        # 8 — Release
-        yield step(8, "Release", "Opening gripper")
-        err = _cmd(lambda: robot.grip_open())
-        if err: yield _evt("error", message=err); return
-        time.sleep(0.5)
-
-        yield _evt("done", message="Pick test complete!")
+        for event in pick_sequence(
+            robot,
+            camera,
+            detector,
+            scan_gx=scan_gx,
+            approach_offset=approach_offset,
+            cancel=pick_test_cancel,
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
 
     return Response(stream_with_context(generate()), content_type="text/event-stream")
 
 
-@app.route("/api/test/pick/cancel", methods=["POST"])
-def api_test_pick_cancel():
+@app.route("/api/pick/cancel", methods=["POST"])
+def api_pick_cancel():
     pick_test_cancel.set()
     return jsonify({"ok": True})
+
+
+# ====================================================================== #
+#  Debug: transform visualisation data
+# ====================================================================== #
+
+
+@app.route("/api/debug/pick_transform")
+def api_debug_pick_transform():
+    """Return full camera→delta transform chain for the current frame."""
+    from coordinates import (
+        GANTRY_X_MIN,
+        GANTRY_X_MAX,
+        TCP_OFFSET_FROM_EE,
+        camera_to_robot,
+        load_camera_transform,
+    )
+
+    scan_gx = float(request.args.get("gantry_x", state.get("gantry_mm", 450)))
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Camera not running"}), 400
+        frame = camera.get_color_frame()
+
+    if frame is None:
+        return jsonify({"ok": False, "message": "No frame available"}), 400
+
+    dets = detector.detect(frame, conf=0.3)
+    if not dets:
+        return jsonify({"ok": False, "message": "No objects detected"}), 400
+
+    best = max(dets, key=lambda d: d.confidence)
+    u, v = int(round(best.center_uv[0])), int(round(best.center_uv[1]))
+
+    with camera_lock:
+        c_point = camera.deproject(u, v, patch=5) if camera else None
+    if c_point is None:
+        return jsonify({"ok": False, "message": f"No depth at pixel ({u}, {v})"}), 400
+
+    R, t = load_camera_transform()
+    c_arr = np.array(c_point)
+    d_point = R @ c_arr + t
+    dx, dy, dz = float(d_point[0]), float(d_point[1]), float(d_point[2])
+
+    world_x = scan_gx + dx
+    gantry_pick = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
+    pick_dx = world_x - gantry_pick
+
+    # Transform all calibration points for overlay
+    calib_overlay = []
+    for pt in calibration_points:
+        cp = np.array(pt["c_point"])
+        transformed = R @ cp + t
+        calib_overlay.append(
+            {
+                "delta_gt": pt["d_point"],
+                "camera_transformed": [round(float(x), 2) for x in transformed],
+            }
+        )
+
+    saved = None
+    if CALIBRATION_FILE.exists():
+        try:
+            saved = json.loads(CALIBRATION_FILE.read_text())
+        except Exception:
+            pass
+
+    return jsonify(
+        {
+            "ok": True,
+            "detection": {
+                "label": best.label,
+                "confidence": round(best.confidence, 3),
+                "pixel": [u, v],
+                "bbox": list(best.bbox),
+            },
+            "camera_point": [round(c, 2) for c in c_point],
+            "delta_point": [round(float(x), 2) for x in d_point],
+            "gantry_scan": scan_gx,
+            "world_x": round(world_x, 2),
+            "gantry_pick": round(gantry_pick, 2),
+            "tcp_target": [round(pick_dx, 2), round(dy, 2), round(dz, 2)],
+            "tcp_offset": list(TCP_OFFSET_FROM_EE),
+            "calibration": {
+                "R": R.tolist(),
+                "t": t.tolist(),
+                "rmsd": saved.get("rmsd") if saved else None,
+                "residuals": saved.get("residuals") if saved else None,
+                "num_points": saved.get("num_points") if saved else None,
+                "num_inliers": saved.get("num_inliers") if saved else None,
+            },
+            "calibration_overlay": calib_overlay,
+            "robot_state": {
+                "gantry_mm": state.get("gantry_mm", 0),
+                "positions": state.get("positions", [0, 0, 0]),
+            },
+        }
+    )
 
 
 # ====================================================================== #
@@ -1261,6 +1252,7 @@ def api_test_pick_cancel():
 
 def main():
     import signal, os
+
     signal.signal(signal.SIGINT, lambda *_: os._exit(0))
     log.info("Starting web server at http://0.0.0.0:8080")
     app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)

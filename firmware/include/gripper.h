@@ -20,9 +20,10 @@ public:
     int32_t getLoad();          // raw current register value (mA)
     bool    isMoving();
 
-    bool isConnected() const { return _connected; }
+    bool isConnected();
 
 private:
+    bool _probe();
     bool _connected = false;
 };
 
