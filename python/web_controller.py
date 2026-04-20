@@ -22,14 +22,13 @@ from flask import (
     Flask,
     Response,
     jsonify,
-    redirect,
     render_template,
     request,
     stream_with_context,
 )
 import serial.tools.list_ports
 
-from delta_robot import DeltaRobot, DeltaRobotError
+from delta_robot import DEFAULT_IK, DeltaRobot, DeltaRobotError
 from delta_kinematics import DeltaKinematics
 from calibration.extrinsic.kabsch import kabsch
 from object_detection import ObjectPointer, VLMError
@@ -68,9 +67,6 @@ state = {
     "positions": [0, 0, 0],
     "gantry_mm": 0.0,
     "moving": False,
-    "speed_rpm": 8000.0,
-    "accel_rpm_s": 4000.0,
-    "enabled": True,
     "zeroed": False,
     "last_command": None,
 }
@@ -78,10 +74,6 @@ state = {
 # Camera
 camera: Optional[StereoCamera] = None  # type: ignore[type-arg]
 camera_lock = threading.Lock()
-
-# Command log (ring buffer, newest first)
-command_log: list[dict] = []
-LOG_MAX = 50
 
 # Calibration state
 CALIBRATION_DIR = Path(__file__).parent / "calibration" / "extrinsic"
@@ -95,25 +87,8 @@ pointer = ObjectPointer()
 pick_test_cancel = threading.Event()
 
 # Inverse kinematics (all dimensions in mm)
-ik_config = {
-    "upper_arm": 150.0,
-    "lower_arm": 268.0,
-    "Fd": 82.5,
-    "Ed": 27.3,
-}
-dk = DeltaKinematics(**ik_config)
-
-
-def log_command(cmd: str, response: str, ok: bool = True) -> None:
-    entry = {
-        "time": time.strftime("%H:%M:%S"),
-        "cmd": cmd,
-        "response": response,
-        "ok": ok,
-    }
-    command_log.insert(0, entry)
-    if len(command_log) > LOG_MAX:
-        command_log.pop()
+dk = DEFAULT_IK
+IK_KEYS = ("upper_arm", "lower_arm", "Fd", "Ed")
 
 
 # ====================================================================== #
@@ -155,45 +130,23 @@ def robot_exec(label: str, fn, *args, **kwargs):
     with robot_lock:
         if robot is None:
             log.warning("CMD  %s  => not connected", label)
-            state["last_command"] = {
-                "cmd": label,
-                "ok": False,
-                "response": "Not connected",
-                "time": time.strftime("%H:%M:%S"),
-            }
-            return "Not connected", False
-        try:
-            result = fn(*args, **kwargs)
-            resp = str(result) if result is not None else "OK"
-            log.info("CMD  %s  => OK  %s", label, resp[:120])
-            log_command(label, resp, ok=True)
-            state["last_command"] = {
-                "cmd": label,
-                "ok": True,
-                "response": resp,
-                "time": time.strftime("%H:%M:%S"),
-            }
-            return resp, True
-        except DeltaRobotError as e:
-            log.error("CMD  %s  => ERR  %s", label, e)
-            log_command(label, str(e), ok=False)
-            state["last_command"] = {
-                "cmd": label,
-                "ok": False,
-                "response": str(e),
-                "time": time.strftime("%H:%M:%S"),
-            }
-            return str(e), False
-        except Exception as e:
-            log.error("CMD  %s  => ERR  %s", label, e)
-            log_command(label, str(e), ok=False)
-            state["last_command"] = {
-                "cmd": label,
-                "ok": False,
-                "response": str(e),
-                "time": time.strftime("%H:%M:%S"),
-            }
-            return str(e), False
+            resp, ok = "Not connected", False
+        else:
+            try:
+                result = fn(*args, **kwargs)
+                resp = str(result) if result is not None else "OK"
+                ok = True
+                log.info("CMD  %s  => OK  %s", label, resp[:120])
+            except Exception as e:
+                resp, ok = str(e), False
+                log.error("CMD  %s  => ERR  %s", label, e)
+        state["last_command"] = {
+            "cmd": label,
+            "ok": ok,
+            "response": resp,
+            "time": time.strftime("%H:%M:%S"),
+        }
+        return resp, ok
 
 
 # ====================================================================== #
@@ -204,16 +157,6 @@ def robot_exec(label: str, fn, *args, **kwargs):
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
-@app.route("/homing")
-def homing():
-    return redirect("/", code=302)
-
-
-@app.route("/calibration")
-def calibration():
-    return redirect("/", code=302)
 
 
 # ====================================================================== #
@@ -253,13 +196,10 @@ def api_connect():
         try:
             r = DeltaRobot(port)
             r.connect()
-            r.set_delta_speed(state["speed_rpm"])
-            r.set_delta_accel(state["accel_rpm_s"])
             robot = r
             state["port"] = port
             state["connected"] = True
             state["zeroed"] = False
-            log_command("CONNECT", f"Connected to {port}", ok=True)
             log.info("Connected to %s", port)
             return jsonify({"ok": True, "message": f"Connected to {port}"})
         except Exception as e:
@@ -281,7 +221,6 @@ def api_disconnect():
             robot = None
         state["connected"] = False
         state["zeroed"] = False
-        log_command("DISCONNECT", "Disconnected", ok=True)
     return jsonify({"ok": True})
 
 
@@ -291,11 +230,6 @@ def api_state():
     from coordinates import DELTA_KINEMATIC_AT_FIRMWARE_ZERO
 
     return jsonify({**state, "delta_offset": DELTA_KINEMATIC_AT_FIRMWARE_ZERO})
-
-
-@app.route("/api/log")
-def api_log():
-    return jsonify(command_log)
 
 
 # ---------- Motion commands ----------
@@ -327,12 +261,6 @@ def api_move_gantry():
         lambda x: robot.move_gantry(x),
         x_mm,
     )
-    return jsonify({"ok": ok, "response": resp})
-
-
-@app.route("/api/home", methods=["POST"])
-def api_home():
-    resp, ok = robot_exec("HOME", lambda: robot.home())
     return jsonify({"ok": ok, "response": resp})
 
 
@@ -458,47 +386,7 @@ def api_rectangle():
     return jsonify({"ok": ok, "response": resp})
 
 
-@app.route("/api/stop", methods=["POST"])
-def api_stop():
-    resp, ok = robot_exec("STOP", lambda: robot.stop())
-    return jsonify({"ok": ok, "response": resp})
-
-
-@app.route("/api/estop", methods=["POST"])
-def api_estop():
-    resp, ok = robot_exec("ESTOP", lambda: robot.emergency_stop())
-    return jsonify({"ok": ok, "response": resp})
-
-
 # ---------- Configuration ----------
-
-
-@app.route("/api/speed", methods=["POST"])
-def api_speed():
-    data = request.json or {}
-    val = float(data.get("steps_per_sec", data.get("rpm", 2000)))
-    resp, ok = robot_exec(
-        f"SPD {val}",
-        lambda v: robot.set_delta_speed(v),
-        val,
-    )
-    if ok:
-        state["speed_rpm"] = val
-    return jsonify({"ok": ok, "response": resp})
-
-
-@app.route("/api/acceleration", methods=["POST"])
-def api_acceleration():
-    data = request.json or {}
-    val = float(data["value"])
-    resp, ok = robot_exec(
-        f"ACC {val}",
-        lambda v: robot.set_delta_accel(v),
-        val,
-    )
-    if ok:
-        state["accel_rpm_s"] = val
-    return jsonify({"ok": ok, "response": resp})
 
 
 @app.route("/api/zero", methods=["POST"])
@@ -534,59 +422,15 @@ def api_move_xyz():
     x = float(data.get("x", 0))
     y = float(data.get("y", 0))
     z = float(data.get("z", 200))
-    try:
-        resp, ok = robot_exec(
-            f"XYZ ({x:.1f}, {y:.1f}, {z:.1f})",
-            lambda x_, y_, z_: robot.move_to_xyz(x_, y_, z_),
-            x,
-            y,
-            z,
-        )
-        if ok and isinstance(resp, str) and resp.startswith("("):
-            angles = None
-        elif ok:
-            angles = list(resp) if not isinstance(resp, str) else None
-        else:
-            angles = None
-        return jsonify({"ok": ok, "response": str(resp), "angles": angles})
-    except (DeltaRobotError, ValueError) as e:
-        return jsonify({"ok": False, "response": str(e), "angles": None}), 400
-
-
-@app.route("/api/move_position", methods=["POST"])
-def api_move_position():
-    """Move gantry + delta to a desired end-effector pose.
-
-    Body: ``{"gantry_x": 400, "x": 50, "y": 0, "z": -200}``
-    """
-    data = request.json or {}
-    gantry_x = float(data.get("gantry_x", 0))
-    x = float(data.get("x", 0))
-    y = float(data.get("y", 0))
-    z = float(data.get("z", 200))
-    try:
-        resp, ok = robot_exec(
-            f"POS G={gantry_x:.1f} ({x:.1f}, {y:.1f}, {z:.1f})",
-            lambda gx, x_, y_, z_: robot.move_to_position(gx, x_, y_, z_),
-            gantry_x,
-            x,
-            y,
-            z,
-        )
-        if ok and not isinstance(resp, str):
-            angles = list(resp)
-        else:
-            angles = None
-        return jsonify(
-            {
-                "ok": ok,
-                "response": str(resp),
-                "angles": angles,
-                "gantry_x": gantry_x,
-            }
-        )
-    except (DeltaRobotError, ValueError) as e:
-        return jsonify({"ok": False, "response": str(e), "angles": None}), 400
+    resp, ok = robot_exec(
+        f"XYZ ({x:.1f}, {y:.1f}, {z:.1f})",
+        lambda x_, y_, z_: robot.move_to_xyz(x_, y_, z_),
+        x,
+        y,
+        z,
+    )
+    angles = list(resp) if ok and not isinstance(resp, str) else None
+    return jsonify({"ok": ok, "response": str(resp), "angles": angles})
 
 
 @app.route("/api/ik_config", methods=["GET", "POST"])
@@ -595,14 +439,11 @@ def api_ik_config():
     global dk
     if request.method == "POST":
         data = request.json or {}
-        for key in ("upper_arm", "lower_arm", "Fd", "Ed"):
-            if key in data:
-                ik_config[key] = float(data[key])
-        dk = DeltaKinematics(**ik_config)
+        params = {k: float(data.get(k, getattr(dk, k))) for k in IK_KEYS}
+        dk = DeltaKinematics(**params)
         if robot is not None:
             robot.ik = dk
-        return jsonify({"ok": True, **ik_config})
-    return jsonify(ik_config)
+    return jsonify({k: getattr(dk, k) for k in IK_KEYS})
 
 
 # ---------- Camera ----------
@@ -662,6 +503,25 @@ def api_camera_overlay():
             return jsonify({"ok": False, "message": "Camera not running"}), 400
         camera.set_overlay(aruco=bool(data.get("aruco", False)))
     return jsonify({"ok": True})
+
+
+@app.route("/api/camera/snapshot")
+def api_camera_snapshot():
+    """Single JPEG of the current color frame. For agents that need to
+    visually inspect the scene (e.g. 'is the cardboard transporter under
+    the delta robot?'). Returns raw image/jpeg bytes."""
+    import cv2
+
+    with camera_lock:
+        if not camera or not camera.running:
+            return jsonify({"ok": False, "message": "Start the camera first"}), 400
+        frame = camera.get_color_frame()
+    if frame is None:
+        return jsonify({"ok": False, "message": "No camera frame available"}), 503
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    if not ok:
+        return jsonify({"ok": False, "message": "JPEG encode failed"}), 500
+    return Response(buf.tobytes(), mimetype="image/jpeg")
 
 
 # ---------- Calibration ----------
@@ -806,24 +666,14 @@ def api_calibration_save():
     return jsonify({"ok": True, "path": str(CALIBRATION_FILE)})
 
 
-@app.route("/api/calibration/load")
-def api_calibration_load():
-    """Load a previously saved D_T_c from disk."""
-    if not CALIBRATION_FILE.exists():
-        return jsonify({"ok": False, "message": "No saved calibration found"}), 404
-    try:
-        data = json.loads(CALIBRATION_FILE.read_text())
-        return jsonify({"ok": True, **data})
-    except Exception as e:
-        return jsonify({"ok": False, "message": str(e)}), 500
-
-
 @app.route("/api/calibration/auto")
 def api_calibration_auto():
     """Auto-calibrate: move to ~100 spiral waypoints, capture at each. SSE stream."""
     import math
+    from coordinates import MARKER_OFFSET_FROM_EE
 
     global calibration_result
+    offset = list(MARKER_OFFSET_FROM_EE)
 
     num_points = int(request.args.get("n", 100))
 
@@ -877,10 +727,6 @@ def api_calibration_auto():
             if auto_cal_cancel.is_set():
                 yield f"data: {json.dumps({'type': 'cancelled', 'index': i})}\n\n"
                 return
-
-            from coordinates import MARKER_OFFSET_FROM_EE
-
-            offset = list(MARKER_OFFSET_FROM_EE)
 
             with camera_lock:
                 if not camera or not camera.running:
@@ -1028,9 +874,10 @@ def api_vlm_point():
         return jsonify({"ok": False, "message": f"VLM error: {exc}"}), 502
 
     if point is None:
-        return jsonify(
-            {"ok": False, "message": f"VLM could not locate {description!r}"}
-        ), 404
+        return (
+            jsonify({"ok": False, "message": f"VLM could not locate {description!r}"}),
+            404,
+        )
 
     u, v = int(round(point.u)), int(round(point.v))
     h, w = frame.shape[:2]
@@ -1050,112 +897,6 @@ def api_vlm_point():
 def api_pick_cancel():
     pick_test_cancel.set()
     return jsonify({"ok": True})
-
-
-# ====================================================================== #
-#  Debug: transform visualisation data
-# ====================================================================== #
-
-
-@app.route("/api/debug/pick_transform")
-def api_debug_pick_transform():
-    """Return full camera→delta transform chain for the current frame.
-
-    Requires ``description`` query arg — the object for the VLM to point at.
-    """
-    from coordinates import (
-        GANTRY_X_MIN,
-        GANTRY_X_MAX,
-        TCP_OFFSET_FROM_EE,
-        load_camera_transform,
-    )
-
-    description = _get_description(request)
-    if not description:
-        return jsonify({"ok": False, "message": "description is required"}), 400
-
-    scan_gx = float(request.args.get("gantry_x", state.get("gantry_mm", 450)))
-
-    with camera_lock:
-        if not camera or not camera.running:
-            return jsonify({"ok": False, "message": "Camera not running"}), 400
-        frame = camera.get_color_frame()
-
-    if frame is None:
-        return jsonify({"ok": False, "message": "No frame available"}), 400
-
-    try:
-        point = pointer.point(frame, description)
-    except VLMError as e:
-        return jsonify({"ok": False, "message": str(e)}), 502
-
-    if point is None:
-        return jsonify({"ok": False, "message": f"VLM could not locate {description!r}"}), 404
-
-    u, v = int(round(point.u)), int(round(point.v))
-
-    with camera_lock:
-        c_point = camera.deproject(u, v, patch=5) if camera else None
-    if c_point is None:
-        return jsonify({"ok": False, "message": f"No depth at pixel ({u}, {v})"}), 400
-
-    R, t = load_camera_transform()
-    c_arr = np.array(c_point)
-    d_point = R @ c_arr + t
-    dx, dy, dz = float(d_point[0]), float(d_point[1]), float(d_point[2])
-
-    world_x = scan_gx + dx
-    gantry_pick = max(GANTRY_X_MIN, min(GANTRY_X_MAX, world_x))
-    pick_dx = world_x - gantry_pick
-
-    calib_overlay = []
-    for pt in calibration_points:
-        cp = np.array(pt["c_point"])
-        transformed = R @ cp + t
-        calib_overlay.append(
-            {
-                "delta_gt": pt["d_point"],
-                "camera_transformed": [round(float(x), 2) for x in transformed],
-            }
-        )
-
-    saved = None
-    if CALIBRATION_FILE.exists():
-        try:
-            saved = json.loads(CALIBRATION_FILE.read_text())
-        except Exception:
-            pass
-
-    return jsonify(
-        {
-            "ok": True,
-            "target": {
-                "description": description,
-                "label": point.label,
-                "pixel": [u, v],
-            },
-            "camera_point": [round(c, 2) for c in c_point],
-            "delta_point": [round(float(x), 2) for x in d_point],
-            "gantry_scan": scan_gx,
-            "world_x": round(world_x, 2),
-            "gantry_pick": round(gantry_pick, 2),
-            "tcp_target": [round(pick_dx, 2), round(dy, 2), round(dz, 2)],
-            "tcp_offset": list(TCP_OFFSET_FROM_EE),
-            "calibration": {
-                "R": R.tolist(),
-                "t": t.tolist(),
-                "rmsd": saved.get("rmsd") if saved else None,
-                "residuals": saved.get("residuals") if saved else None,
-                "num_points": saved.get("num_points") if saved else None,
-                "num_inliers": saved.get("num_inliers") if saved else None,
-            },
-            "calibration_overlay": calib_overlay,
-            "robot_state": {
-                "gantry_mm": state.get("gantry_mm", 0),
-                "positions": state.get("positions", [0, 0, 0]),
-            },
-        }
-    )
 
 
 # ====================================================================== #

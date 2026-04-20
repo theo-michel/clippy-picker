@@ -1,9 +1,9 @@
 """Deterministic picker preflight probes.
 
 Each probe queries `web_controller.py` on localhost and returns a dict shaped
-like `PreflightCheck`. `fixable_by` separates 'the agent can re-home / cycle
-the gripper' from 'a human has to plug the robot back in, zero it, or
-position the transporter'.
+like `PreflightCheck` (name, ok, detail, data). Whether a failure is
+agent-fixable or human-fixable is decided by the agent — it's a function of
+which tools the agent owns, not metadata on the probe itself.
 
 Probes do not mutate robot state except for `gripper_ok`, which is guarded
 on the edge state machine being idle.
@@ -33,17 +33,10 @@ log = logging.getLogger("picker.preflight")
 def _check(
     name: str,
     ok: bool,
-    fixable_by: str,
     detail: str = "",
     data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
-        "name": name,
-        "ok": ok,
-        "fixable_by": fixable_by,
-        "detail": detail,
-        "data": data or {},
-    }
+    return {"name": name, "ok": ok, "detail": detail, "data": data or {}}
 
 
 def _get(path: str) -> dict[str, Any] | None:
@@ -69,11 +62,9 @@ def _post(path: str, body: dict[str, Any] | None = None) -> dict[str, Any] | Non
 def picker_connected() -> dict[str, Any]:
     state = _get("/api/state")
     if state is None:
-        # Controller itself is unreachable — agent can't fix that.
         return _check(
             "picker_connected",
             False,
-            "human",
             detail="Picker web controller is unreachable. Start it on the picker Pi.",
             data={"controller_reachable": False, "connected": False},
         )
@@ -81,8 +72,7 @@ def picker_connected() -> dict[str, Any]:
     return _check(
         "picker_connected",
         ok,
-        "agent",
-        detail="" if ok else "Serial port not open — agent can auto-discover a USB port and reconnect.",
+        detail="" if ok else "Serial port not open — call reconnect_picker.",
         data={"controller_reachable": True, "connected": ok, "port": state.get("port")},
     )
 
@@ -93,12 +83,7 @@ def picker_zeroed() -> dict[str, Any]:
     return _check(
         "picker_zeroed",
         ok,
-        "human",
-        detail=(
-            ""
-            if ok
-            else "Align motors to physical zero and press ZERO on the picker UI."
-        ),
+        detail="" if ok else "Align motors to physical zero and press ZERO on the picker UI.",
         data={"zeroed": ok},
     )
 
@@ -112,7 +97,6 @@ def picker_homed() -> dict[str, Any]:
         return _check(
             "picker_homed",
             False,
-            "agent",
             detail="Run full_home.",
             data={"state_available": state is not None, "moving": bool(state and state.get("moving"))},
         )
@@ -142,13 +126,7 @@ def picker_homed() -> dict[str, Any]:
     if home_xyz:
         data["home_xyz"] = home_xyz
 
-    return _check(
-        "picker_homed",
-        ok,
-        "agent",
-        detail="" if ok else "Run full_home.",
-        data=data,
-    )
+    return _check("picker_homed", ok, detail="" if ok else "Run full_home.", data=data)
 
 
 def camera_running() -> dict[str, Any]:
@@ -157,7 +135,6 @@ def camera_running() -> dict[str, Any]:
     return _check(
         "camera_running",
         running,
-        "agent",
         detail="" if running else "Start the stereo camera.",
         data=status or {},
     )
@@ -168,34 +145,8 @@ def calibration_loaded() -> dict[str, Any]:
     return _check(
         "calibration_loaded",
         exists,
-        "human",
-        detail=(
-            ""
-            if exists
-            else "Run the extrinsic calibration flow and save the transform."
-        ),
+        detail="" if exists else "Run the extrinsic calibration flow and save the transform.",
         data={"path": str(CALIBRATION_FILE), "exists": exists},
-    )
-
-
-def transporter_in_frame(description: str = "cardboard transporter") -> dict[str, Any]:
-    # Requires the camera; if it's not running VLM will fail — surface as failure.
-    result = _post("/api/vlm/point", {"description": description})
-    pixel = None
-    ok = False
-    if result and result.get("ok"):
-        pixel = result.get("pixel")
-        ok = pixel is not None
-    return _check(
-        "transporter_in_frame",
-        ok,
-        "human",
-        detail=(
-            ""
-            if ok
-            else "Position the cardboard transporter within the picker's camera view."
-        ),
-        data={"pixel": pixel, "description": description},
     )
 
 
@@ -207,13 +158,9 @@ def gripper_ok() -> dict[str, Any]:
         steps.append({"action": action, "ok": bool(r and r.get("ok"))})
         if not (r and r.get("ok")):
             return _check(
-                "gripper_ok",
-                False,
-                "agent",
-                detail="Cycle the gripper.",
-                data={"steps": steps},
+                "gripper_ok", False, detail="Cycle the gripper.", data={"steps": steps}
             )
-    return _check("gripper_ok", True, "agent", detail="", data={"steps": steps})
+    return _check("gripper_ok", True, detail="", data={"steps": steps})
 
 
 def run_all() -> list[dict[str, Any]]:
@@ -233,7 +180,6 @@ def run_all() -> list[dict[str, Any]]:
             _check(
                 "picker_homed",
                 False,
-                "agent",
                 detail="Run full_home.",
                 data={"skipped": "picker_not_connected"},
             )
@@ -242,27 +188,12 @@ def run_all() -> list[dict[str, Any]]:
             _check(
                 "gripper_ok",
                 False,
-                "agent",
                 detail="Cycle the gripper.",
                 data={"skipped": "picker_not_connected"},
             )
         )
 
-    cam = camera_running()
-    checks.append(cam)
+    checks.append(camera_running())
     checks.append(calibration_loaded())
-
-    if cam["ok"]:
-        checks.append(transporter_in_frame())
-    else:
-        checks.append(
-            _check(
-                "transporter_in_frame",
-                False,
-                "human",
-                detail="Position the cardboard transporter within the picker's camera view.",
-                data={"skipped": "camera_not_running"},
-            )
-        )
 
     return checks

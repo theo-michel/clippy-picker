@@ -17,11 +17,13 @@ import json
 import logging
 import signal
 import threading
+import time
+from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import paho.mqtt.client as mqtt
 import requests
@@ -69,13 +71,19 @@ class Command(BaseModel):
     timestamp: datetime = Field(default_factory=_now)
 
 
-FixableBy = Literal["agent", "human"]
+class MachineResult(BaseModel):
+    machine: str
+    request_id: str
+    event: str
+    ok: bool
+    detail: str = ""
+    data: dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=_now)
 
 
 class PreflightCheck(BaseModel):
     name: str
     ok: bool
-    fixable_by: FixableBy
     detail: str = ""
     data: dict[str, Any] = Field(default_factory=dict)
 
@@ -102,8 +110,8 @@ def command_topic(m: str) -> str:
     return f"{_P}/commands/{m}"
 
 
-def machine_preflight_topic(m: str) -> str:
-    return f"{_P}/machines/{m}/preflight"
+def machine_result_topic(m: str) -> str:
+    return f"{_P}/machines/{m}/results"
 
 
 MessageCallback = Callable[[str, dict[str, Any]], None]
@@ -139,7 +147,9 @@ class MqttClient:
     def disconnect(self) -> None:
         self._client.disconnect()
 
-    def publish_model(self, topic: str, model: BaseModel, *, retain: bool = False) -> None:
+    def publish_model(
+        self, topic: str, model: BaseModel, *, retain: bool = False
+    ) -> None:
         self._client.publish(topic, model.model_dump_json(), retain=retain)
 
     def subscribe(self, topic: str, callback: MessageCallback) -> None:
@@ -233,21 +243,48 @@ TRANSITIONS = {
 
 
 # ── REST calls to web_controller.py ─────────────────────────────────
+# The edge is the *only* thing that talks to web_controller from outside
+# the picker Pi. All factory-issued actions flow through here.
 
 
-def _post(path: str, body: dict | None = None) -> dict:
-    return requests.post(f"{PICKER_BASE}{path}", json=body or {}, timeout=60).json()
+def _post(path: str, body: dict | None = None, timeout: float = 60.0) -> dict:
+    try:
+        r = requests.post(f"{PICKER_BASE}{path}", json=body or {}, timeout=timeout)
+        r.raise_for_status()
+        return r.json() if r.content else {}
+    except Exception as e:
+        log.warning("POST %s failed: %s", path, e)
+        return {"ok": False, "error": str(e)}
+
+
+def _get(path: str, timeout: float = 5.0) -> dict:
+    try:
+        r = requests.get(f"{PICKER_BASE}{path}", timeout=timeout)
+        r.raise_for_status()
+        return r.json() if r.content else {}
+    except Exception as e:
+        log.warning("GET %s failed: %s", path, e)
+        return {"ok": False, "error": str(e)}
 
 
 def do_home() -> bool:
-    return _post("/api/full_home").get("ok", False)
+    """Full homing; may take 60-90 s. Poll /api/state.moving afterwards as a
+    guard against returning before motion actually stops."""
+    result = _post("/api/full_home", timeout=120.0)
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        state = _get("/api/state", timeout=2.0)
+        if state and not state.get("moving"):
+            break
+        time.sleep(0.5)
+    return bool(result.get("ok"))
 
 
 def do_scan_and_pick(scan_x: float, description: str) -> str:
-    """Run the pick sequence via the SSE test/pick endpoint.
+    """Run the pick sequence via the SSE /api/pick endpoint.
 
     ``description`` is the natural-language target handed to the VLM.
-    Returns 'object_found', 'no_object', or 'fault'.
+    Returns 'object_found', 'no_object', 'cancelled', or 'fault'.
     """
     try:
         with requests.get(
@@ -271,21 +308,88 @@ def do_scan_and_pick(scan_x: float, description: str) -> str:
                 elif msg_type == "done":
                     return "object_found"
                 elif msg_type == "cancelled":
-                    return "fault"
+                    return "cancelled"
     except Exception as e:
         log.error("Pick request failed: %s", e)
     return "fault"
 
 
 def do_drop() -> bool:
-    return _post("/api/grip", {"action": "OPEN"}).get("ok", False)
+    return bool(_post("/api/grip", {"action": "OPEN"}).get("ok"))
 
 
-def do_open_gripper() -> bool:
-    return _post("/api/grip", {"action": "OPEN"}).get("ok", False)
+def do_gripper(action: str) -> dict:
+    return _post("/api/grip", {"action": action}, timeout=8.0)
+
+
+def do_cycle_gripper() -> tuple[bool, list[dict]]:
+    steps: list[dict] = []
+    for action in ("OPEN", "CLOSE", "OPEN"):
+        r = do_gripper(action)
+        steps.append({"action": action, "ok": bool(r.get("ok"))})
+        if not r.get("ok"):
+            return False, steps
+    return True, steps
+
+
+def do_start_camera() -> dict:
+    return _post("/api/camera/start", timeout=10.0)
+
+
+def do_reconnect() -> dict:
+    """Auto-discover a USB serial port and open it.
+
+    Prefers devices whose name contains 'usbserial' or 'ttyUSB'. Returns
+    a dict with ok + detail; a missing port is flagged so the factory
+    knows it's a human-fixable condition, not a transient failure.
+    """
+    listing = _get("/api/ports", timeout=5.0)
+    ports = listing.get("response") or listing.get("ports") or []
+    # /api/ports returns a list of dicts with 'device' keys (or a list of strings).
+    port = None
+    for p in ports:
+        dev = p.get("device") if isinstance(p, dict) else str(p)
+        if dev and ("usbserial" in dev or "ttyUSB" in dev):
+            port = dev
+            break
+    if port is None:
+        return {
+            "ok": False,
+            "error": "No USB serial port detected — plug the picker in.",
+            "ports": [p.get("device") if isinstance(p, dict) else p for p in ports],
+        }
+    return _post("/api/connect", {"port": port}, timeout=10.0)
+
+
+def do_look_camera() -> dict:
+    """Fetch a single JPEG snapshot from the picker's stereo camera and
+    return it base64-encoded. The agent receives this as an actual image
+    in its tool-result, so Claude can visually inspect the scene."""
+    import base64
+
+    try:
+        r = requests.get(f"{PICKER_BASE}/api/camera/snapshot", timeout=10.0)
+    except Exception as e:
+        return {"ok": False, "error": f"camera snapshot failed: {e}"}
+    if r.status_code != 200 or not r.headers.get("Content-Type", "").startswith("image/"):
+        msg = r.json().get("message") if r.content else f"HTTP {r.status_code}"
+        return {"ok": False, "error": msg or "camera snapshot unavailable"}
+    return {"ok": True, "_image_b64": base64.b64encode(r.content).decode("ascii")}
+
+
+def do_cancel_pick() -> bool:
+    return bool(_post("/api/pick/cancel", timeout=5.0).get("ok"))
 
 
 # ── Main ────────────────────────────────────────────────────────────
+
+
+HandlerResult = tuple[bool, str, dict[str, Any]]
+Handler = Callable[[dict[str, Any]], HandlerResult]
+
+MAX_PICK_RETRIES = 3
+DEFAULT_SCAN_X = 500.0
+RECENT_REQUEST_IDS_MAX = 64
 
 
 def main():
@@ -295,9 +399,6 @@ def main():
     args = parser.parse_args()
 
     mqtt_client = MqttClient(client_id="picker-edge", host=args.broker, port=args.port)
-    task_params: dict = {}
-    retries = 0
-    max_retries = 3
 
     def publish_state(old: Enum, event: str, new: Enum):
         mqtt_client.publish_model(
@@ -325,40 +426,223 @@ def main():
             ),
         )
 
-    def on_command(_topic: str, data: dict):
-        nonlocal task_params, retries
+    # ── Handlers ─────────────────────────────────────────────────────
+    # Each handler takes cmd params and returns (ok, detail, data). The
+    # dispatcher wraps the return value in a MachineResult if the command
+    # carried a request_id.
+
+    def _require_idle(action: str) -> HandlerResult | None:
+        if sm.state != S.IDLE:
+            return (
+                False,
+                f"picker is {sm.state.name}, not IDLE — refusing {action}",
+                {"state": sm.state.name},
+            )
+        return None
+
+    def h_task_received(params: dict) -> HandlerResult:
+        description = params.get("description")
+        if not description:
+            return False, "task_received requires a 'description' param", {}
+        if sm.state != S.IDLE:
+            return (
+                False,
+                f"picker is {sm.state.name}, cannot accept task",
+                {"state": sm.state.name},
+            )
+        scan_x = float(params.get("scan_x", DEFAULT_SCAN_X))
+        threading.Thread(
+            target=run_pick_cycle, args=(scan_x, str(description)), daemon=True
+        ).start()
+        return True, "task accepted", {"scan_x": scan_x, "description": description}
+
+    def h_recover(params: dict) -> HandlerResult:
+        if sm.state != S.ERROR:
+            return (
+                False,
+                f"picker is {sm.state.name}, not ERROR — ignoring recover",
+                {"state": sm.state.name},
+            )
+        mode = str(params.get("mode", "re_home"))
+        threading.Thread(target=run_recovery, args=(mode,), daemon=True).start()
+        return True, f"recovery started (mode={mode})", {"mode": mode}
+
+    def h_preflight(params: dict) -> HandlerResult:
+        report = _run_preflight_sync()
+        log.info(
+            "Preflight: %s",
+            ", ".join(f"{c.name}={'ok' if c.ok else 'fail'}" for c in report.checks),
+        )
+        for c in report.checks:
+            if not c.ok:
+                log.info("  %s FAIL: %s", c.name, c.detail or "(no detail)")
+        return (
+            all(c.ok for c in report.checks),
+            "preflight complete",
+            report.model_dump(mode="json"),
+        )
+
+    def h_home(_params: dict) -> HandlerResult:
+        gate = _require_idle("home")
+        if gate is not None:
+            return gate
+        ok = do_home()
+        return ok, "home complete" if ok else "home failed", {}
+
+    def h_cycle_gripper(_params: dict) -> HandlerResult:
+        gate = _require_idle("cycle_gripper")
+        if gate is not None:
+            return gate
+        ok, steps = do_cycle_gripper()
+        return ok, "gripper cycled" if ok else "gripper cycle failed", {"steps": steps}
+
+    def h_open_gripper(_params: dict) -> HandlerResult:
+        # Safety release: must work from any state, including HOLDING / ERROR.
+        r = do_gripper("OPEN")
+        ok = bool(r.get("ok"))
+        return ok, "gripper opened" if ok else r.get("error", "open failed"), r
+
+    def h_close_gripper(_params: dict) -> HandlerResult:
+        gate = _require_idle("close_gripper")
+        if gate is not None:
+            return gate
+        r = do_gripper("CLOSE")
+        ok = bool(r.get("ok"))
+        return ok, "gripper closed" if ok else r.get("error", "close failed"), r
+
+    def h_start_camera(_params: dict) -> HandlerResult:
+        r = do_start_camera()
+        ok = bool(r.get("ok"))
+        return ok, "camera started" if ok else r.get("error", "start failed"), r
+
+    def h_reconnect(_params: dict) -> HandlerResult:
+        r = do_reconnect()
+        ok = bool(r.get("ok"))
+        return ok, "serial reconnected" if ok else r.get("error", "reconnect failed"), r
+
+    def h_look_camera(_params: dict) -> HandlerResult:
+        r = do_look_camera()
+        return (
+            bool(r.get("ok")),
+            "camera snapshot" if r.get("ok") else r.get("error", "snapshot failed"),
+            r,
+        )
+
+    def h_cancel_task(_params: dict) -> HandlerResult:
+        if sm.state not in (S.SCANNING, S.HOLDING):
+            return (
+                True,
+                f"nothing to cancel (state={sm.state.name})",
+                {"state": sm.state.name},
+            )
+        ok = do_cancel_pick()
+        return ok, "cancel signalled" if ok else "cancel failed", {}
+
+    def h_pause(_params: dict) -> HandlerResult:
+        """Stop-and-idle for the picker: cancel any in-flight pick, release
+        the gripper, and nudge the state machine back to IDLE. Always
+        reaches a safe state; ok=False only on hardware faults."""
+        if sm.state in (S.SCANNING, S.HOLDING):
+            do_cancel_pick()
+        release = do_gripper("OPEN")
+        try:
+            if sm.state == S.ERROR:
+                sm.send("recover")
+            elif sm.state == S.HOLDING:
+                sm.send("drop_complete")
+            elif sm.state == S.SCANNING:
+                # SCANNING → IDLE goes via no_object. Piggy-back so the state
+                # machine stays consistent with the published state.
+                sm.send("no_object")
+        except Exception as e:
+            log.warning("pause transition failed: %s", e)
+        return (
+            bool(release.get("ok")),
+            "paused",
+            {"final_state": sm.state.name},
+        )
+
+    def h_resume(_params: dict) -> HandlerResult:
+        # Picker has no queued-work concept; resume is a declarative no-op
+        # that keeps the verb set symmetric across machines.
+        return (
+            True,
+            f"nothing to resume (state={sm.state.name})",
+            {"state": sm.state.name},
+        )
+
+    HANDLERS: dict[str, Handler] = {
+        "task_received": h_task_received,
+        "recover": h_recover,
+        "preflight": h_preflight,
+        "home": h_home,
+        "cycle_gripper": h_cycle_gripper,
+        "open_gripper": h_open_gripper,
+        "close_gripper": h_close_gripper,
+        "start_camera": h_start_camera,
+        "reconnect": h_reconnect,
+        "look_camera": h_look_camera,
+        "cancel_task": h_cancel_task,
+        "pause": h_pause,
+        "resume": h_resume,
+    }
+
+    recent_req_ids: deque[str] = deque(maxlen=RECENT_REQUEST_IDS_MAX)
+
+    def publish_result(
+        req_id: str, event: str, ok: bool, detail: str, data: dict
+    ) -> None:
+        if not req_id:
+            return
+        mqtt_client.publish_model(
+            machine_result_topic(MACHINE_NAME),
+            MachineResult(
+                machine=MACHINE_NAME,
+                request_id=req_id,
+                event=event,
+                ok=ok,
+                detail=detail,
+                data=data,
+            ),
+        )
+
+    def on_command(_topic: str, data: dict) -> None:
         try:
             cmd = Command.model_validate(data)
         except Exception:
             log.warning("Invalid command: %s", data)
             return
-        if cmd.event == "task_received" and sm.state == S.IDLE:
-            task_params = cmd.params
-            retries = 0
-            threading.Thread(target=run_pick_cycle, daemon=True).start()
-        elif cmd.event == "recover" and sm.state == S.ERROR:
-            mode = cmd.params.get("mode", "re_home")
-            threading.Thread(target=run_recovery, args=(mode,), daemon=True).start()
-        elif cmd.event == "preflight":
-            req_id = str(cmd.params.get("request_id", ""))
-            threading.Thread(target=run_preflight, args=(req_id,), daemon=True).start()
-
-    def run_pick_cycle():
-        nonlocal retries
-        scan_x = task_params.get("scan_x", 450.0)
-        description = task_params.get("description")
-        if not description:
-            log.error("task_received missing 'description' param")
-            sm.send("fault")
-            publish_error("missing_description", "task_received requires a 'description' param")
+        handler = HANDLERS.get(cmd.event)
+        if handler is None:
+            log.warning("Unknown command event: %s", cmd.event)
             return
+        req_id = str(cmd.params.get("request_id") or "")
+        if req_id and req_id in recent_req_ids:
+            log.info("Dropping duplicate request_id=%s", req_id)
+            return
+        if req_id:
+            recent_req_ids.append(req_id)
 
+        def run() -> None:
+            try:
+                ok, detail, payload = handler(cmd.params)
+            except Exception as e:
+                log.exception("Handler %s crashed", cmd.event)
+                ok, detail, payload = False, f"handler crashed: {e}", {}
+            publish_result(req_id, cmd.event, ok, detail, payload)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # ── Long-running workers ─────────────────────────────────────────
+
+    def run_pick_cycle(scan_x: float, description: str) -> None:
         try:
             sm.send("task_received")
         except Exception as e:
             log.error("State transition failed: %s", e)
             return
 
+        retries = 0
         while sm.state == S.SCANNING:
             outcome = do_scan_and_pick(scan_x, description)
             if outcome == "object_found":
@@ -369,36 +653,43 @@ def main():
                     sm.send("fault")
                     publish_error("drop_failed", "Gripper release failed")
                 break
-            elif outcome == "no_object":
+            if outcome == "cancelled":
+                try:
+                    sm.send("no_object")
+                except Exception:
+                    pass
+                break
+            if outcome == "no_object":
                 retries += 1
-                if retries >= max_retries:
+                if retries >= MAX_PICK_RETRIES:
                     sm.send("no_object")
                 else:
                     sm.send("pick_failed")
-            elif outcome == "fault":
-                sm.send("fault")
-                publish_error(
-                    "pick_sequence_failed",
-                    f"Fault during pick at scan_x={scan_x}, target={description!r}",
-                )
-                break
+                continue
+            # outcome == "fault"
+            sm.send("fault")
+            publish_error(
+                "pick_sequence_failed",
+                f"Fault during pick at scan_x={scan_x}, target={description!r}",
+            )
+            break
 
-    def run_recovery(mode: str):
-        if mode == "open_gripper":
-            do_open_gripper()
-        do_home()
+    def run_recovery(mode: str) -> None:
+        if mode in ("open_gripper", "stop_and_idle"):
+            do_gripper("OPEN")
+        if mode != "stop_and_idle":
+            do_home()
         try:
             sm.send("recover")
         except Exception as e:
             log.error("Recovery transition failed: %s", e)
 
-    def run_preflight(req_id: str):
+    def _run_preflight_sync() -> PreflightReport:
         # Import lazily so the edge still imports if preflight.py is missing.
         from preflight import run_all
 
         # Gripper cycle is the only preflight probe with side effects; guard it
         # behind IDLE so we never poke the gripper mid-job.
-        raw_checks: list[dict]
         if sm.state == S.IDLE:
             raw_checks = run_all()
         else:
@@ -406,32 +697,17 @@ def main():
                 {
                     "name": "preflight_skipped",
                     "ok": False,
-                    "fixable_by": "human",
                     "detail": f"Picker is {sm.state.name}, not IDLE — cannot run preflight now.",
                     "data": {"state": sm.state.name},
                 }
             ]
-        report = PreflightReport(
+        return PreflightReport(
             machine=MACHINE_NAME,
-            request_id=req_id,
+            request_id="",  # request_id travels on the MachineResult envelope
             checks=[PreflightCheck.model_validate(c) for c in raw_checks],
         )
-        mqtt_client.publish_model(machine_preflight_topic(MACHINE_NAME), report)
-        log.info(
-            "Preflight report (req=%s): %s",
-            req_id,
-            ", ".join(
-                f"{c.name}={'ok' if c.ok else 'fail'}" for c in report.checks
-            ),
-        )
-        for c in report.checks:
-            if not c.ok:
-                log.info(
-                    "  %s FAIL: %s | data=%s",
-                    c.name,
-                    c.detail or "(no detail)",
-                    c.data,
-                )
+
+    # ── Main loop ────────────────────────────────────────────────────
 
     mqtt_client.connect()
     mqtt_client.loop_start()
