@@ -18,7 +18,13 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+# Pointing only needs coarse localisation — the model returns coords normalised
+# to 0–1000 anyway. Downscaling the long edge slashes vision-token prefill
+# (dominant cost) with no measurable accuracy loss for objects >~30 px.
+MAX_EDGE_PX = 640
+JPEG_QUALITY = 75
 
 
 @dataclass
@@ -72,7 +78,8 @@ class ObjectPointer:
 
         self._ensure_client()
 
-        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        small = _downscale(frame, MAX_EDGE_PX)
+        ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if not ok:
             raise VLMError("Failed to JPEG-encode frame for VLM")
 
@@ -107,6 +114,17 @@ class ObjectPointer:
         u = float(np.clip(x_norm / 1000.0 * w, 0, w - 1))
         v = float(np.clip(y_norm / 1000.0 * h, 0, h - 1))
         return Point(u=u, v=v, label=label or description.strip())
+
+
+def _downscale(frame: np.ndarray, max_edge: int) -> np.ndarray:
+    """Resize so the longer edge is at most ``max_edge`` px; no-op if already smaller."""
+    h, w = frame.shape[:2]
+    scale = max_edge / max(h, w)
+    if scale >= 1.0:
+        return frame
+    return cv2.resize(
+        frame, (int(round(w * scale)), int(round(h * scale))), interpolation=cv2.INTER_AREA
+    )
 
 
 def _parse_point(text: str) -> tuple[float, float, str] | None:
