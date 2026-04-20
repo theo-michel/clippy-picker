@@ -59,6 +59,9 @@ robot: Optional[DeltaRobot] = None
 robot_lock = threading.Lock()
 
 # Cached state (updated by background thread)
+# `zeroed` is the picker's own record of whether its motors have been zeroed
+# this session. Set by /api/zero, cleared on every (re)connect. Consumed by
+# preflight via /api/state — no attestation from the factory side.
 state = {
     "connected": False,
     "port": None,
@@ -68,6 +71,7 @@ state = {
     "speed_rpm": 8000.0,
     "accel_rpm_s": 4000.0,
     "enabled": True,
+    "zeroed": False,
     "last_command": None,
 }
 
@@ -254,6 +258,7 @@ def api_connect():
             robot = r
             state["port"] = port
             state["connected"] = True
+            state["zeroed"] = False
             log_command("CONNECT", f"Connected to {port}", ok=True)
             log.info("Connected to %s", port)
             return jsonify({"ok": True, "message": f"Connected to {port}"})
@@ -275,6 +280,7 @@ def api_disconnect():
                 pass
             robot = None
         state["connected"] = False
+        state["zeroed"] = False
         log_command("DISCONNECT", "Disconnected", ok=True)
     return jsonify({"ok": True})
 
@@ -498,6 +504,8 @@ def api_acceleration():
 @app.route("/api/zero", methods=["POST"])
 def api_zero():
     resp, ok = robot_exec("ZERO", lambda: robot.zero())
+    if ok:
+        state["zeroed"] = True
     return jsonify({"ok": ok, "response": resp})
 
 

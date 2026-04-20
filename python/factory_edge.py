@@ -21,7 +21,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import paho.mqtt.client as mqtt
 import requests
@@ -69,6 +69,24 @@ class Command(BaseModel):
     timestamp: datetime = Field(default_factory=_now)
 
 
+FixableBy = Literal["agent", "human"]
+
+
+class PreflightCheck(BaseModel):
+    name: str
+    ok: bool
+    fixable_by: FixableBy
+    detail: str = ""
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class PreflightReport(BaseModel):
+    machine: str
+    request_id: str
+    checks: list[PreflightCheck]
+    timestamp: datetime = Field(default_factory=_now)
+
+
 _P = "factory"
 
 
@@ -82,6 +100,10 @@ def machine_error_topic(m: str) -> str:
 
 def command_topic(m: str) -> str:
     return f"{_P}/commands/{m}"
+
+
+def machine_preflight_topic(m: str) -> str:
+    return f"{_P}/machines/{m}/preflight"
 
 
 MessageCallback = Callable[[str, dict[str, Any]], None]
@@ -317,6 +339,9 @@ def main():
         elif cmd.event == "recover" and sm.state == S.ERROR:
             mode = cmd.params.get("mode", "re_home")
             threading.Thread(target=run_recovery, args=(mode,), daemon=True).start()
+        elif cmd.event == "preflight":
+            req_id = str(cmd.params.get("request_id", ""))
+            threading.Thread(target=run_preflight, args=(req_id,), daemon=True).start()
 
     def run_pick_cycle():
         nonlocal retries
@@ -366,6 +391,47 @@ def main():
             sm.send("recover")
         except Exception as e:
             log.error("Recovery transition failed: %s", e)
+
+    def run_preflight(req_id: str):
+        # Import lazily so the edge still imports if preflight.py is missing.
+        from preflight import run_all
+
+        # Gripper cycle is the only preflight probe with side effects; guard it
+        # behind IDLE so we never poke the gripper mid-job.
+        raw_checks: list[dict]
+        if sm.state == S.IDLE:
+            raw_checks = run_all()
+        else:
+            raw_checks = [
+                {
+                    "name": "preflight_skipped",
+                    "ok": False,
+                    "fixable_by": "human",
+                    "detail": f"Picker is {sm.state.name}, not IDLE — cannot run preflight now.",
+                    "data": {"state": sm.state.name},
+                }
+            ]
+        report = PreflightReport(
+            machine=MACHINE_NAME,
+            request_id=req_id,
+            checks=[PreflightCheck.model_validate(c) for c in raw_checks],
+        )
+        mqtt_client.publish_model(machine_preflight_topic(MACHINE_NAME), report)
+        log.info(
+            "Preflight report (req=%s): %s",
+            req_id,
+            ", ".join(
+                f"{c.name}={'ok' if c.ok else 'fail'}" for c in report.checks
+            ),
+        )
+        for c in report.checks:
+            if not c.ok:
+                log.info(
+                    "  %s FAIL: %s | data=%s",
+                    c.name,
+                    c.detail or "(no detail)",
+                    c.data,
+                )
 
     mqtt_client.connect()
     mqtt_client.loop_start()
