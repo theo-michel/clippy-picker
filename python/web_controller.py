@@ -654,37 +654,6 @@ def api_camera_feed():
     )
 
 
-@app.route("/api/camera/pointcloud.ply")
-def api_camera_pointcloud():
-    """Download the current frame as a binary PLY point cloud.
-
-    Query params:
-      - ``stride`` (int, default 2): decimation factor. 1 = full density.
-      - ``z_min``, ``z_max`` (float mm): depth clip range.
-    """
-    stride = max(1, int(request.args.get("stride", 2)))
-    z_min = float(request.args.get("z_min", 100.0))
-    z_max = float(request.args.get("z_max", 1500.0))
-
-    with camera_lock:
-        if not camera or not camera.running:
-            return jsonify({"ok": False, "message": "Camera not running"}), 400
-        ply = camera.get_pointcloud_ply(
-            z_min_mm=z_min, z_max_mm=z_max, stride=stride
-        )
-
-    if ply is None:
-        return jsonify({"ok": False, "message": "No frame available yet"}), 503
-
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
-    filename = f"pointcloud_{ts}.ply"
-    return Response(
-        ply,
-        mimetype="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 @app.route("/api/camera/overlay", methods=["POST"])
 def api_camera_overlay():
     data = request.json or {}

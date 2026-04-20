@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PICKER — TELEMETRY</title>
+  <title>Picker Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -37,6 +37,7 @@
       --axis-z:        #2E4A6B;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    button:not(:disabled), select, summary, label[for] { cursor: pointer; }
     html { font-size: 14px; }
     body {
       font-family: var(--font);
@@ -76,9 +77,7 @@
       letter-spacing: 0.12em;
     }
     .topbar-left  { display: flex; align-items: center; gap: 10px; }
-    .topbar-mid   { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text-dim); }
-    .topbar-mid .mods { color: var(--text); letter-spacing: 0.08em; }
-    .topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+    .topbar-mid   { display: flex; align-items: center; justify-content: center; gap: 8px; }
     .logo        { font-size: .78rem; font-weight: 600; letter-spacing: 0.14em; color: var(--text); }
     .logo-version{ font-size: .64rem; color: var(--text-dim); margin-left: 4px; }
     .status-dot {
@@ -485,8 +484,8 @@
     @media (max-width: 960px) {
       .workspace-row { grid-template-columns: 1fr; }
       .controls      { grid-template-columns: 1fr 1fr; }
-      .topbar        { grid-template-columns: 1fr auto; }
-      .topbar-mid    { display: none; }
+      .topbar        { grid-template-columns: 1fr auto; gap: 10px; }
+      .topbar-mid    { justify-content: flex-end; flex-wrap: wrap; }
     }
     @media (max-width: 640px) {
       .controls       { grid-template-columns: 1fr; }
@@ -498,15 +497,11 @@
 
   <header class="topbar">
     <div class="topbar-left">
-      <span class="logo">PICKER<span class="logo-version">[V.0.4.2_DELTA]</span></span>
+      <span class="logo">PICKER<span class="logo-version">[V.0.1.0]</span></span>
       <div class="status-dot" id="statusDot"></div>
       <span class="status-label" id="statusLabel">DISCONNECTED</span>
     </div>
     <div class="topbar-mid">
-      <span>CORE_MODULES:</span>
-      <span class="mods">HOMING · CALIBRATION · PICK_TEST</span>
-    </div>
-    <div class="topbar-right">
       <button class="btn btn-sm btn-primary" onclick="openHomingWizard()">▸ HOMING</button>
       <button class="btn btn-sm" onclick="openCalibSidebar()">▸ CALIBRATE</button>
       <button class="btn btn-sm" onclick="openPickTest()">▸ PICK_TEST</button>
@@ -521,10 +516,7 @@
     <div class="pane">
       <div class="pane-header">
         <span class="pane-title">[CAMERA_FEED]</span>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-sm" id="btnCloud" onclick="downloadPointCloud()" style="display:none;">PLY</button>
-          <button class="btn btn-sm" id="btnCamera" onclick="toggleCamera()">START</button>
-        </div>
+        <button class="btn btn-sm" id="btnCamera" onclick="toggleCamera()">START</button>
       </div>
       <div class="camera-body" id="cameraBody">
         <div class="camera-placeholder" id="cameraPlaceholder">
@@ -631,7 +623,7 @@
 <footer class="bottombar">
   <span>CALIBRATED · <span id="bottomDate"></span></span>
   <span>SPATIAL_CALIBRATION_READY</span>
-  <span class="right">(DIAGRAM 01) PICKER_WORKSPACE</span>
+  <span class="right">PICKER_WORKSPACE</span>
 </footer>
 <script>document.getElementById('bottomDate').textContent = new Date().toISOString().slice(0, 10);</script>
 
@@ -1006,7 +998,6 @@ async function toggleCamera() {
   if (cameraRunning) {
     btn.textContent = 'START'; feed.style.display = 'none'; feed.src = '';
     ph.style.display = 'flex'; msg.textContent = 'SENSOR_OFF'; cameraRunning = false;
-    $('btnCloud').style.display = 'none';
     try { await fetch('/api/camera/stop', { method: 'POST' }); } catch {} return;
   }
   btn.textContent = 'STARTING\u2026'; btn.disabled = true; msg.textContent = 'INITIALIZING_SENSOR\u2026';
@@ -1015,38 +1006,9 @@ async function toggleCamera() {
     const data = await res.json();
     if (!data.ok) { msg.textContent = (data.message || 'FAILED').toUpperCase(); btn.textContent = 'START'; btn.disabled = false; return; }
     cameraRunning = true; btn.textContent = 'STOP'; btn.disabled = false;
-    $('btnCloud').style.display = '';
     ph.style.display = 'none'; feed.style.display = 'block'; feed.src = '/api/camera/feed?' + Date.now();
     feed.onerror = () => { if (cameraRunning) { feed.style.display = 'none'; ph.style.display = 'flex'; msg.textContent = 'FEED_LOST'; } };
   } catch { msg.textContent = 'CONNECTION_ERROR'; btn.textContent = 'START'; btn.disabled = false; }
-}
-
-async function downloadPointCloud() {
-  const btn = $('btnCloud');
-  const prev = btn.textContent;
-  btn.disabled = true; btn.textContent = 'GRABBING\u2026';
-  try {
-    const resp = await fetch('/api/camera/pointcloud.ply?stride=2');
-    if (!resp.ok) {
-      let msg = 'FAILED';
-      try { msg = (await resp.json()).message || msg; } catch {}
-      showCmd('POINT_CLOUD', msg, false);
-      return;
-    }
-    const blob = await resp.blob();
-    const cd = resp.headers.get('Content-Disposition') || '';
-    const match = cd.match(/filename="([^"]+)"/);
-    const filename = match ? match[1] : 'pointcloud.ply';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-    showCmd('POINT_CLOUD', `${filename} (${(blob.size/1024).toFixed(0)} KB)`, true);
-  } catch (e) {
-    showCmd('POINT_CLOUD', e.message || 'error', false);
-  } finally {
-    btn.disabled = false; btn.textContent = prev;
-  }
 }
 
 async function checkCameraStatus() {
@@ -1054,7 +1016,6 @@ async function checkCameraStatus() {
     const data = await (await fetch('/api/camera/status')).json();
     if (data.running) {
       cameraRunning = true; $('btnCamera').textContent = 'STOP';
-      $('btnCloud').style.display = '';
       $('cameraPlaceholder').style.display = 'none';
       const feed = $('cameraFeed'); feed.style.display = 'block'; feed.src = '/api/camera/feed?' + Date.now();
     }
