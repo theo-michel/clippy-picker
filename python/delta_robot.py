@@ -272,6 +272,48 @@ class DeltaRobot:
         """Set gripper to a raw servo position."""
         self._command_ok(f"GRIP {pos}")
 
+    def wait_for_gripper(
+        self,
+        timeout: float = 3.0,
+        settle_samples: int = 3,
+        pos_tolerance: int = 3,
+        poll_interval: float = 0.1,
+        initial_delay: float = 0.15,
+    ) -> bool:
+        """Block until the Feetech gripper finishes moving.
+
+        The firmware does not surface the servo's "moving" flag in TELEM, so
+        we infer settling by polling ``dxl_pos`` and checking that it changes
+        by at most ``pos_tolerance`` units across ``settle_samples`` consecutive
+        readings. This catches both normal completion and stalls against an
+        object (where position stops advancing as load rises).
+
+        Returns True if the gripper settled within ``timeout``, False otherwise.
+        Returns True immediately if the gripper is not connected (so callers
+        degrade gracefully on hardware without a Feetech servo).
+        """
+        time.sleep(initial_delay)
+        deadline = time.time() + timeout
+        last_pos: int | None = None
+        stable = 0
+        while time.time() < deadline:
+            try:
+                t = self.get_telemetry()
+            except (TimeoutError, RuntimeError):
+                time.sleep(poll_interval)
+                continue
+            if not t.dxl_ok:
+                return True
+            if last_pos is not None and abs(t.dxl_pos - last_pos) <= pos_tolerance:
+                stable += 1
+                if stable >= settle_samples:
+                    return True
+            else:
+                stable = 0
+            last_pos = t.dxl_pos
+            time.sleep(poll_interval)
+        return False
+
     # ── Speed / acceleration ─────────────────────────────────────────────
 
     def set_delta_speed(self, steps_per_sec: float) -> None:

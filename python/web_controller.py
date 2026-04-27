@@ -908,8 +908,9 @@ def main():
     import signal, os
 
     signal.signal(signal.SIGINT, lambda *_: os._exit(0))
-    log.info("Starting web server at http://0.0.0.0:8080")
-    app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)
+    port = int(os.environ.get("PICKER_PORT", "8080"))
+    log.info("Starting web server at http://0.0.0.0:%d", port)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
 
 
 if __name__ == "__main__":

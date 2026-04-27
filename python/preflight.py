@@ -15,9 +15,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import os
+
 import requests
 
-BASE = "http://localhost:8080"
+BASE = os.environ.get(
+    "PICKER_BASE", f"http://localhost:{os.environ.get('PICKER_PORT', '8080')}"
+)
 HTTP_TIMEOUT = 8.0
 
 HOME_ANGLE_TOL_DEG = 1.0

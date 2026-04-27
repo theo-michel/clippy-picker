@@ -216,7 +216,11 @@ class StateMachine:
 # ── Picker states & transitions ─────────────────────────────────────
 
 MACHINE_NAME = "picker"
-PICKER_BASE = "http://localhost:8080"
+import os as _os
+
+PICKER_BASE = _os.environ.get(
+    "PICKER_BASE", f"http://localhost:{_os.environ.get('PICKER_PORT', '8080')}"
+)
 
 
 class S(Enum):

@@ -254,7 +254,9 @@ class PickSequence:
     def _grab(self) -> Generator[Event, None, None]:
         yield self._event(5, "Grab", "Closing gripper")
         self._cmd(self.robot.grip_close)
-        time.sleep(0.5)
+        # Block until the servo stops advancing — either it reached the closed
+        # position or stalled against the object. Either way it's safe to lift.
+        self._cmd(lambda: self.robot.wait_for_gripper(timeout=3.0))
         self._check_cancel()
 
     def _lift(self) -> Generator[Event, None, None]:
